@@ -92,5 +92,6 @@ def test_explain_parses_and_caps(monkeypatch):
     }
     monkeypatch.setattr(study, "_client", lambda cfg: _FakeClient(json.dumps(payload)))
     out = study.explain_and_suggest(CFG, "vacille", "le dollar vacille", "fr B2")
-    assert out["lemma"] == "vaciller" and out["lang"] == "en"
+    assert out["lemma"] == "vaciller"
+    assert out["lang"] == "zh"  # fixed by config (default), not the model's "en"
     assert len(out["cards"]) == 3  # capped

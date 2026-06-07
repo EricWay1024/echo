@@ -22,6 +22,7 @@ class Config:
     llm_provider: str
     llm_model: str           # explanations / rectify (strongest)
     llm_translate_model: str  # bulk clause translation (cheap)
+    explain_lang: str        # fixed language for explanations + card glosses
     api_key_env: str
     llm_api_key: str | None  # inline key from config (local-only convenience)
 
@@ -70,6 +71,7 @@ def load(path: Path | None = None) -> Config:
         llm_provider=llm.get("provider", "anthropic"),
         llm_model=llm.get("model", ""),
         llm_translate_model=llm.get("translate_model", "claude-haiku-4-5"),
+        explain_lang=llm.get("explain_lang", "zh"),
         api_key_env=llm.get("api_key_env", "ANTHROPIC_API_KEY"),
         llm_api_key=llm.get("api_key"),
     )
