@@ -62,9 +62,13 @@ export default function Player({ videoId }) {
     lastIdxRef.current = next
   }
 
-  function tick() {
+  function syncHighlight() {
     const audio = audioRef.current
     if (audio) setActive(findWord(startsRef.current, audio.currentTime * 1000))
+  }
+
+  function tick() {
+    syncHighlight()
     rafRef.current = requestAnimationFrame(tick)
   }
 
@@ -75,9 +79,7 @@ export default function Player({ videoId }) {
 
   function stopLoop() {
     cancelAnimationFrame(rafRef.current)
-    // Settle on the exact current word once after stopping.
-    const audio = audioRef.current
-    if (audio) setActive(findWord(startsRef.current, audio.currentTime * 1000))
+    syncHighlight() // settle on the current word once after stopping
   }
 
   function onWordClick(e) {
@@ -117,7 +119,7 @@ export default function Player({ videoId }) {
           onPlay={startLoop}
           onPause={stopLoop}
           onEnded={stopLoop}
-          onSeeked={stopLoop}
+          onSeeked={syncHighlight}
         />
         <p className="hint">click any word to jump · space to play/pause</p>
       </div>
