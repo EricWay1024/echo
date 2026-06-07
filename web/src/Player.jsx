@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getVideo, runPipeline, getIpa, addMark, deleteMark,
-  getTranslation, explainMark, setCardStatus,
+  getTranslation, explainMark, setCardStatus, setLexeme,
 } from './api'
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5]
@@ -67,7 +67,9 @@ export default function Player({ videoId }) {
   const [popover, setPopover] = useState(null)
   const [trans, setTrans] = useState({}) // segIdx -> text | '…'
   const [lang, setLang] = useState('zh')
-  const [explain, setExplain] = useState(null) // {span, loading, error, exp, cards}
+  const [explain, setExplain] = useState(null) // {span, loading, error, exp}
+  const [cards, setCards] = useState([])
+  const [showCards, setShowCards] = useState(false)
 
   const audioRef = useRef(null)
   const transcriptRef = useRef(null)
@@ -143,6 +145,8 @@ export default function Player({ videoId }) {
     setPopover(null)
     setTrans({})
     setExplain(null)
+    setCards([])
+    setShowCards(false)
     lastTokRef.current = -1
     curSegRef.current = -1
     getVideo(videoId)
@@ -150,6 +154,7 @@ export default function Player({ videoId }) {
         if (!alive) return
         setData(d)
         setMarks(d.marks || [])
+        setCards(d.cards || [])
       })
       .catch((e) => alive && setError(String(e.message || e)))
     getIpa(videoId).then((d) => alive && setIpa(d)).catch(() => {})
@@ -282,21 +287,27 @@ export default function Player({ videoId }) {
   }
 
   function runExplain(span) {
-    setExplain({ span, loading: true, error: null, exp: null, cards: [] })
+    setExplain({ span, loading: true, error: null, exp: null })
     explainMark(videoId, span)
-      .then((r) =>
-        setExplain({ span, loading: false, error: null, exp: r.explanation, cards: r.cards }),
-      )
+      .then((r) => {
+        setExplain({ span, loading: false, error: null, exp: r.explanation })
+        setCards((cs) => [
+          ...cs.filter((c) => !(c.span_start === span[0] && c.span_end === span[1])),
+          ...r.cards,
+        ])
+      })
       .catch((e) =>
-        setExplain({ span, loading: false, error: String(e.message || e), exp: null, cards: [] }),
+        setExplain({ span, loading: false, error: String(e.message || e), exp: null }),
       )
   }
 
   function cardStatus(cardId, status) {
     setCardStatus(cardId, status).catch(() => {})
-    setExplain((e) =>
-      e ? { ...e, cards: e.cards.map((c) => (c.id === cardId ? { ...c, status } : c)) } : e,
-    )
+    setCards((cs) => cs.map((c) => (c.id === cardId ? { ...c, status } : c)))
+  }
+
+  function markKnown(lemma) {
+    if (lemma) setLexeme(lemma, 'fr', 'known').catch(() => {})
   }
 
   function toggleMark(tok, kind) {
@@ -469,6 +480,7 @@ export default function Player({ videoId }) {
       const d = await getVideo(videoId)
       setData(d)
       setMarks(d.marks || [])
+      setCards(d.cards || [])
       getIpa(videoId).then(setIpa).catch(() => {})
     } catch (e) {
       setError(String(e.message || e))
@@ -481,6 +493,26 @@ export default function Player({ videoId }) {
   if (!data) return <p className="muted">loading transcript…</p>
 
   const popTok = popover?.type === 'ipa' && view ? view.tokByGi[popover.gi] : null
+  const panelCards = explain
+    ? cards.filter((c) => c.span_start === explain.span[0] && c.span_end === explain.span[1])
+    : []
+  const acceptedCount = cards.filter((c) => c.status === 'accepted').length
+  const pronCount = marks.filter((m) => m.kind === 'pron').length
+
+  const renderCard = (c) => (
+    <div key={c.id} className={`card st-${c.status}`}>
+      <div className="card-kind">{c.kind}</div>
+      <div className="card-front">{c.front}</div>
+      <div className="card-back">{c.back}</div>
+      {c.rationale && <div className="card-rat">{c.rationale}</div>}
+      <div className="card-actions">
+        <button className={c.status === 'accepted' ? 'on' : ''}
+          onClick={() => cardStatus(c.id, 'accepted')}>accept</button>
+        <button className={c.status === 'rejected' ? 'on' : ''}
+          onClick={() => cardStatus(c.id, 'rejected')}>reject</button>
+      </div>
+    </div>
+  )
 
   return (
     <main className="player">
@@ -519,6 +551,12 @@ export default function Player({ videoId }) {
               EN
             </button>
           </div>
+          <button
+            className={`ctl${showCards ? ' on' : ''}`}
+            onClick={() => setShowCards((s) => !s)}
+          >
+            cards ({acceptedCount})
+          </button>
           {pipelined && (
             <>
               <button
@@ -630,33 +668,32 @@ export default function Player({ videoId }) {
             <>
               <div className="explain-head">
                 {explain.exp.lemma} · <span className="muted">{explain.exp.pos}</span>
+                <button className="knownbtn" title="I already know this — stop suggesting it"
+                  onClick={() => markKnown(explain.exp.lemma)}>
+                  ✓ known
+                </button>
               </div>
               <div className="explain-body">{explain.exp.body}</div>
               <div className="explain-cards-h">suggested cards</div>
-              {explain.cards.map((c) => (
-                <div key={c.id} className={`card st-${c.status}`}>
-                  <div className="card-kind">{c.kind}</div>
-                  <div className="card-front">{c.front}</div>
-                  <div className="card-back">{c.back}</div>
-                  <div className="card-rat">{c.rationale}</div>
-                  <div className="card-actions">
-                    <button
-                      className={c.status === 'accepted' ? 'on' : ''}
-                      onClick={() => cardStatus(c.id, 'accepted')}
-                    >
-                      accept
-                    </button>
-                    <button
-                      className={c.status === 'rejected' ? 'on' : ''}
-                      onClick={() => cardStatus(c.id, 'rejected')}
-                    >
-                      reject
-                    </button>
-                  </div>
-                </div>
-              ))}
+              {panelCards.map(renderCard)}
             </>
           )}
+        </aside>
+      )}
+
+      {showCards && (
+        <aside className="cardspanel">
+          <button className="explain-x" onClick={() => setShowCards(false)}>✕</button>
+          <div className="explain-head">cards</div>
+          <div className="muted" style={{ fontSize: '0.82rem', marginBottom: '8px' }}>
+            {acceptedCount} accepted · {cards.length} total · {pronCount} 🔊 → audio
+          </div>
+          <div className="export-row">
+            <a className="ctl" href={`/api/videos/${videoId}/export?format=apkg`}>export .apkg</a>
+            <a className="ctl" href={`/api/videos/${videoId}/export?format=tsv`}>export .tsv</a>
+          </div>
+          {cards.length === 0 && <p className="muted">no cards yet — mark ❓ spans.</p>}
+          {cards.map(renderCard)}
         </aside>
       )}
     </main>

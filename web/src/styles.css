@@ -281,6 +281,36 @@ body {
 }
 .card-actions button.on { border-color: var(--accent); color: var(--accent); background: #fff8ec; }
 
+/* ---- cards drawer (curate + export) ---- */
+.cardspanel {
+  position: fixed;
+  left: 16px;
+  top: 92px;
+  width: 340px;
+  max-height: 76vh;
+  overflow: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  padding: 16px;
+  z-index: 40;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.export-row { display: flex; gap: 8px; margin-bottom: 12px; }
+a.ctl { text-decoration: none; display: inline-flex; }
+.knownbtn {
+  float: right;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+  color: var(--muted);
+}
+.knownbtn:hover { border-color: var(--accent); color: var(--accent); }
+
 /* ---- marks ---- */
 .w.mp { text-decoration: underline dotted var(--accent); text-underline-offset: 4px; }
 .w.mm { text-decoration: underline wavy #b91c1c; text-underline-offset: 4px; }

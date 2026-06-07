@@ -65,6 +65,20 @@ def test_translate_clause(monkeypatch):
     assert study.translate_clause(CFG, "le dollar vacille", "zh") == "美元在动摇"
 
 
+def test_known_lemmas_in_prompt(monkeypatch):
+    seen = {}
+
+    class Rec:
+        def __init__(self):
+            self.messages = SimpleNamespace(
+                create=lambda **kw: (seen.update(kw) or _FakeMsg('{"lemma":"x","pos":"n","lang":"en","explanation":"e","cards":[]}')))
+
+    monkeypatch.setattr(study, "_client", lambda cfg: Rec())
+    study.explain_and_suggest(CFG, "x", "clause", "fr B2", known=["dollar", "yuan"])
+    user = seen["messages"][0]["content"]
+    assert "dollar" in user and "yuan" in user
+
+
 def test_explain_parses_and_caps(monkeypatch):
     payload = {
         "lemma": "vaciller", "pos": "verb", "lang": "en",

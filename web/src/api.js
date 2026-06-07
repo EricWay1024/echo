@@ -51,3 +51,10 @@ export const setCardStatus = (cardId, status) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
   }).then(asJson)
+
+export const setLexeme = (lemma, lang, status) =>
+  fetch('/api/lexemes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lemma, lang, status }),
+  }).then(asJson)

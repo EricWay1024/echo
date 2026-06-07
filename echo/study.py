@@ -84,10 +84,14 @@ def _loads_loose(text: str) -> dict:
 
 
 def explain_and_suggest(cfg, span_text: str, clause: str, profile: str,
-                        note: str | None = None) -> dict:
+                        note: str | None = None,
+                        known: list[str] | None = None) -> dict:
     user = (f"Marked span: «{span_text}»\nIts clause: «{clause}»\n"
             + (f"Learner's note: {note}\n" if note else "")
             + f"Learner profile: {profile}")
+    if known:
+        user += ("\nAlready known (do NOT make cards that merely re-teach these "
+                 "words; only card genuinely new value): " + ", ".join(known[:200]))
     client = _client(cfg)
     extra = ""
     for _ in (1, 2):

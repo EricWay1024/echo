@@ -7,11 +7,12 @@ client-routed SPA.)
 
 from __future__ import annotations
 
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, db, phon, render, study
@@ -204,12 +205,13 @@ def explain(video_id: str, payload: dict) -> dict:
         note = next((m.get("note") for m in db.load_marks(conn, video_id)
                      if m["span_start"] == s and m["span_end"] == e
                      and m["kind"] == "meaning"), None)
+        known = db.load_known_lemmas(conn)
         span_text, clause = _span_and_clause(words, rendered, s, e)
     finally:
         conn.close()
 
     data = study.explain_and_suggest(cfg, span_text, clause,
-                                     study.profile_str(cfg), note)
+                                     study.profile_str(cfg), note, known=known)
     conn = db.connect(cfg.db_path)
     try:
         db.store_explanation(conn, video_id, s, e, data["lang"], data["lemma"],
@@ -255,6 +257,39 @@ def run_pipeline(video_id: str, force: bool = False) -> dict:
         return result
     finally:
         conn.close()
+
+
+@app.post("/api/lexemes")
+def set_lexeme(payload: dict) -> dict:
+    lemma = (payload or {}).get("lemma")
+    if not lemma:
+        raise HTTPException(400, "need lemma")
+    conn = db.connect(cfg.db_path)
+    try:
+        db.upsert_lexeme(conn, lemma, (payload or {}).get("lang", "fr"),
+                         (payload or {}).get("status", "known"))
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@app.get("/api/videos/{video_id}/export")
+def export_video(video_id: str, format: str = "apkg"):
+    from . import export as exporter
+
+    conn = db.connect(cfg.db_path)
+    try:
+        if format == "tsv":
+            tsv = exporter.build_tsv(conn, video_id)
+            return PlainTextResponse(
+                tsv, media_type="text/tab-separated-values",
+                headers={"Content-Disposition": f'attachment; filename="echo_{video_id}.tsv"'})
+        out_dir = Path(tempfile.mkdtemp(prefix="echo_apkg_"))
+        path = exporter.build_apkg(cfg, conn, video_id, out_dir)
+    finally:
+        conn.close()
+    return FileResponse(path, filename=f"echo_{video_id}.apkg",
+                        media_type="application/octet-stream")
 
 
 @app.post("/api/cards/{card_id}/status")

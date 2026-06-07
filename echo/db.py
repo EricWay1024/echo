@@ -225,6 +225,15 @@ def set_card_status(conn, card_id: int, status: str) -> None:
     conn.commit()
 
 
+def load_known_lemmas(conn, lang: str = "fr", limit: int = 300) -> list[str]:
+    rows = conn.execute(
+        "SELECT lemma FROM lexemes WHERE lang = ? AND status = 'known' "
+        "ORDER BY updated_at DESC LIMIT ?",
+        (lang, limit),
+    ).fetchall()
+    return [r["lemma"] for r in rows]
+
+
 def upsert_lexeme(conn, lemma: str, lang: str, status: str = "learning") -> None:
     conn.execute(
         "INSERT INTO lexemes (lemma, lang, status, updated_at) VALUES (?, ?, ?, ?) "
