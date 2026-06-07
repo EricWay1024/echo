@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db, phon, render
+from . import config, db, phon, render, study
 
 _ipa_cache: dict[str, dict] = {}  # video_id -> {tokens, segments} (process-level)
 
@@ -73,6 +73,8 @@ def get_video(video_id: str) -> dict:
             "segments": segments,
             "render": rendered,
             "marks": db.load_marks(conn, video_id),
+            "explanations": db.load_explanations(conn, video_id),
+            "cards": db.load_cards(conn, video_id),
         }
     finally:
         conn.close()
@@ -139,6 +141,93 @@ def get_ipa(video_id: str) -> dict:
     return result
 
 
+def _span_and_clause(words, rendered, s, e):
+    """Reconstruct the marked span's rectified text and its enclosing clause."""
+    if rendered:
+        clause = ""
+        span_toks = []
+        for seg in rendered:
+            if seg["span_start"] <= s <= seg["span_end"]:
+                clause = "".join(t["text"] for t in seg["tokens"]).strip()
+            for t in seg["tokens"]:
+                if t["src_start"] <= e and s <= t["src_end"]:
+                    span_toks.append(t["text"])
+        span_text = "".join(span_toks).strip() or "".join(
+            w["text"] for w in words[s:e + 1]).strip()
+        return span_text, clause or span_text
+    span_text = "".join(w["text"] for w in words[s:e + 1]).strip()
+    return span_text, span_text
+
+
+@app.get("/api/videos/{video_id}/translation/{seg_idx}")
+def get_translation(video_id: str, seg_idx: int, lang: str = "zh") -> dict:
+    conn = db.connect(cfg.db_path)
+    try:
+        cached = db.get_translation(conn, video_id, seg_idx, lang)
+        if cached is not None:
+            return {"text": cached, "cached": True}
+        rendered = render.render(
+            db.load_words(conn, video_id), db.load_edits(conn, video_id),
+            db.load_segments(conn, video_id))
+        if not (0 <= seg_idx < len(rendered)):
+            raise HTTPException(404, "segment not found")
+        clause = "".join(t["text"] for t in rendered[seg_idx]["tokens"]).strip()
+    finally:
+        conn.close()
+
+    text = study.translate_clause(cfg, clause, lang)  # network; conn closed
+    conn = db.connect(cfg.db_path)
+    try:
+        db.store_translation(conn, video_id, seg_idx, lang, text)
+    finally:
+        conn.close()
+    return {"text": text, "cached": False}
+
+
+@app.post("/api/videos/{video_id}/explain")
+def explain(video_id: str, payload: dict) -> dict:
+    span = (payload or {}).get("span")
+    if not (isinstance(span, list) and len(span) == 2):
+        raise HTTPException(400, "need span [start, end]")
+    s, e = int(span[0]), int(span[1])
+
+    conn = db.connect(cfg.db_path)
+    try:
+        cached = db.get_explanation(conn, video_id, s, e)
+        if cached and not (payload or {}).get("force"):
+            cards = [c for c in db.load_cards(conn, video_id)
+                     if c["span_start"] == s and c["span_end"] == e]
+            return {"explanation": cached, "cards": cards, "cached": True}
+        words = db.load_words(conn, video_id)
+        rendered = render.render(words, db.load_edits(conn, video_id),
+                                 db.load_segments(conn, video_id))
+        note = next((m.get("note") for m in db.load_marks(conn, video_id)
+                     if m["span_start"] == s and m["span_end"] == e
+                     and m["kind"] == "meaning"), None)
+        span_text, clause = _span_and_clause(words, rendered, s, e)
+    finally:
+        conn.close()
+
+    data = study.explain_and_suggest(cfg, span_text, clause,
+                                     study.profile_str(cfg), note)
+    conn = db.connect(cfg.db_path)
+    try:
+        db.store_explanation(conn, video_id, s, e, data["lang"], data["lemma"],
+                             data["pos"], data["explanation"])
+        db.upsert_lexeme(conn, data["lemma"], "fr", "learning")
+        db.replace_suggested_cards(conn, video_id, s, e, data["cards"])
+        cards = [c for c in db.load_cards(conn, video_id)
+                 if c["span_start"] == s and c["span_end"] == e]
+    finally:
+        conn.close()
+    return {
+        "explanation": {"lang": data["lang"], "lemma": data["lemma"],
+                        "pos": data["pos"], "body": data["explanation"]},
+        "cards": cards,
+        "cached": False,
+    }
+
+
 @app.post("/api/videos", status_code=201)
 def add_video(payload: dict) -> dict:
     url = (payload or {}).get("url")
@@ -166,6 +255,19 @@ def run_pipeline(video_id: str, force: bool = False) -> dict:
         return result
     finally:
         conn.close()
+
+
+@app.post("/api/cards/{card_id}/status")
+def set_card_status(card_id: int, payload: dict) -> dict:
+    status = (payload or {}).get("status")
+    if status not in ("suggested", "accepted", "rejected"):
+        raise HTTPException(400, "status must be suggested|accepted|rejected")
+    conn = db.connect(cfg.db_path)
+    try:
+        db.set_card_status(conn, card_id, status)
+    finally:
+        conn.close()
+    return {"ok": True}
 
 
 @app.get("/audio/{video_id}.opus")

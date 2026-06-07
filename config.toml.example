@@ -6,7 +6,8 @@ target = {lang="fr", level="B2"}
 
 [llm]
 provider = "anthropic"
-model = "claude-opus-4-8"        # strongest available
+model = "claude-opus-4-8"            # rectify + explanations (strongest)
+translate_model = "claude-haiku-4-5" # bulk clause translation (cheap)
 
 # Provide the key in ONE of two ways:
 #   (a) env var (recommended): leave api_key_env set, then `export ANTHROPIC_API_KEY=sk-ant-...`

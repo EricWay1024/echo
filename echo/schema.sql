@@ -1,5 +1,5 @@
 -- écho schema. Slice 1: videos, words. Slice 2: edits, segments.
--- Slice 3: marks. Later: explanations, lexemes.
+-- Slice 3: marks. Slice 4: translations, explanations, cards, lexemes.
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -56,4 +56,49 @@ CREATE TABLE IF NOT EXISTS marks (
     note       TEXT,               -- optional user comment
     created_at TEXT,
     PRIMARY KEY (video_id, span_start, span_end, kind)
+);
+
+-- On-demand clause translations, cached per (video, clause, language).
+CREATE TABLE IF NOT EXISTS translations (
+    video_id TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    seg_idx  INTEGER NOT NULL,
+    lang     TEXT    NOT NULL,      -- zh | en
+    text     TEXT,
+    PRIMARY KEY (video_id, seg_idx, lang)
+);
+
+-- LLM explanation of a marked span (one per span; language routed by the model).
+CREATE TABLE IF NOT EXISTS explanations (
+    video_id   TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    span_start INTEGER NOT NULL,
+    span_end   INTEGER NOT NULL,
+    lang       TEXT,               -- en | zh
+    lemma      TEXT,
+    pos        TEXT,
+    body       TEXT,
+    created_at TEXT,
+    PRIMARY KEY (video_id, span_start, span_end)
+);
+
+-- Suggested / curated Anki cards.
+CREATE TABLE IF NOT EXISTS cards (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id   TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    span_start INTEGER,
+    span_end   INTEGER,
+    kind       TEXT,               -- cloze | vocab | grammar | usage | audio
+    front      TEXT,
+    back       TEXT,
+    rationale  TEXT,
+    status     TEXT,               -- suggested | accepted | rejected
+    created_at TEXT
+);
+
+-- Cross-video vocabulary state.
+CREATE TABLE IF NOT EXISTS lexemes (
+    lemma      TEXT NOT NULL,
+    lang       TEXT NOT NULL,
+    status     TEXT,               -- unknown | learning | known
+    updated_at TEXT,
+    PRIMARY KEY (lemma, lang)
 );

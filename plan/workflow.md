@@ -1,80 +1,72 @@
-# écho — the two-pass learning workflow (design philosophy)
+# écho — the learning workflow (design philosophy)
 
-How the app is actually used, agreed 2026-06-07. Every imported video goes
-through two passes. The app models them as two explicit **modes** over the same
-rectified+segmented transcript (Slice 2), with opposite affordances.
+How the app is used, agreed 2026-06-07 (revised to a **single unified flow** — the
+earlier two-pass split is dropped; see history at the bottom).
 
-## Pass 1 — Shadow mode (form / pronunciation). No LLM.
-Goal: shadow the audio, fix articulation, flag what to revisit. Meaning is
-deliberately backgrounded.
+## One pass, meaning opt-in
+Everything happens in one view over the rectified+segmented transcript (Slice 2).
+There are no Shadow/Study modes. The discipline that the two passes encoded —
+**form first, meaning second** — is preserved not by enforcing modes but by
+keeping everything meaning-related **off by default and opt-in**:
 
-- **Audio is ground truth; IPA is a diagnostic aid, not the target.** Word-level
-  IPA in isolation lies in French (liaison/enchaînement: `les échos` → [le.ze.ko]).
-  So: **clause-level IPA** by default, word-level on click; always on-demand
-  (try to mimic from audio first, reveal IPA to diagnose a specific failure).
-- **Pronunciation source (no LLM):** Lexique.org for dictionary-quality IPA of
-  inflected forms (+ frequency), espeak-ng/phonemizer as G2P fallback for OOV and
-  for phrase-level transcription. Lexique first, espeak fallback.
-- **Step/repeat:** "step mode" auto-pauses at each clause end; **Space** resumes
-  into the next clause (and pauses at its end). No inserted-silence estimation.
-  Reuses existing clause loops + speed control.
-- **Two mark types** (attention in this pass is on sound, not meaning):
-  - 🔊 pronunciation-trouble → pronunciation drilling / audio cards.
-  - ❓ meaning-unknown → carried into Pass 2.
-  - Soft nudge toward *selective* marking (tolerating ambiguity is a B2 skill;
-    over-marking explodes the card load).
+- Translations are hidden until you click a sentence.
+- Explanations appear only when you deliberately mark something.
 
-## Pass 2 — Study mode (meaning / vocabulary). LLM, tiered by value.
-Goal: comprehend, then turn the Pass-1 ❓ marks into durable cards.
+So "shadow the video, then go back for meaning" is a habit you choose, not a mode
+the UI imposes. Nothing meaning-related is ambient.
 
-- **Translations reveal-on-demand, not always-on.** Always-visible translation
-  becomes a crutch — eyes read the gloss, skip parsing the French. Show the
-  clause, attempt comprehension, *then* reveal (reuse hide/reveal). Bonus: only
-  pay to translate clauses you reveal.
-- **Model tiering by value, not uniformly cheap:** Haiku for bulk clause
-  translation (gist, on-demand, cached); Sonnet for marked-item explanations and
-  card suggestions (low-volume, learning-critical — don't cheap out on nuance).
-- **Explanations** routed per learner: English for cognates / faux amis / grammar
-  metalanguage; 中文 for fast direct glosses (faux amis are the highest-error-value
-  items for an en+zh speaker). For a marked conjugated word: lemma + the form's
-  role + the collocation in context, not a dictionary dump.
-- **Translation language configurable** (default 中文 for reading speed).
+## Pronunciation (Slice 3 — done, no LLM)
+- IPA on word click (Lexique + espeak; clause-level liaison), on-demand.
+- Step mode (auto-pause at clause end; Space resumes), clause loops, speed.
+- Audio is ground truth; IPA is a diagnostic aid.
 
-## Card layer (the SRS payoff) — Pass 2 output.
-The LLM infers card-worthy items from the ❓ marks; you curate (accept/reject);
-export. Best practices baked in:
-- **Atomic** cards (one idea each — minimum-information principle).
-- **Cloze over front/back**, using the actual sentence you shadowed.
-- **Collocations over bare words** (`prendre une décision`, not `décision`).
-- **Card type by mark:** vocab/collocation → cloze; grammar/structure → pattern
-  card; idiom/usage/register → usage card. The LLM diagnoses *why* a sentence was
-  marked and picks the type.
-- **Audio cards** (the edge): `ffmpeg`-clip the exact clause from the cached
-  audio, embed it (listen → recall). Requires `.apkg` export (genanki), not TSV.
-- **Dedup against `lexemes`:** never suggest a card for a word already marked
-  "known" in an earlier video. Cross-video memory is what makes video #20 faster
-  than #1.
-- **Rank and cap** suggestions (frequency × above-level × faux-ami), each with a
-  one-line rationale. SRS only pays off if you actually review.
+## Translation (on demand, per clause)
+- Each clause has a small reveal/translate button → translate **that one clause**
+  (never the whole passage), cached per (video, clause, lang). Hidden by default.
+- **Haiku** (cheap) for gist; language configurable, default 中文 (faster to read),
+  EN available.
 
-## Marks lifecycle (closes the loop)
-`unknown` (Pass-1 mark) → `learning` (card made) → `known` (matured / user-set),
-propagated to `lexemes` so future videos pre-grey what you already know.
+## Marking → explanation + card suggestions (the core loop)
+- Select text → popover: **🔊 pron / ❓ meaning + optional note → confirm**.
+- A **❓ meaning** mark immediately fires one **Sonnet** call that returns, for the
+  selected span in its clause context (+ user profile + the note):
+  - **explanation**: lemma + the inflected form's role + the collocation, routed
+    by language (EN for cognates/faux-amis/grammar metalanguage, 中文 for direct
+    glosses), calibrated to B2 (skip basics; collocations, register, idioms).
+  - **suggested Anki cards** (shown inline to accept/reject), built right:
+    - atomic (one idea each); cloze over front/back using the real clause;
+      collocations over bare words; card type by what was marked (vocab → cloze,
+      grammar → pattern, idiom/usage → usage card).
+- A **🔊 pron** mark is a flag (no LLM); it becomes an **audio card** suggestion at
+  export (clip the clause from the cached audio + IPA).
 
-## Resolved decisions (2026-06-07)
-1. Pronunciation source: **Lexique.org first, espeak-ng/phonemizer fallback**.
-2. **Two mark types** (pronunciation 🔊 vs meaning ❓).
-3. Translations **reveal-on-demand**.
-4. Export: **`.apkg`** (enables audio + cloze cards).
-5. Repeat: **auto-pause at clause end + Space to resume** (no inserted silence).
+## Cards & lexemes
+- Suggestions are stored at mark time; you curate (accept/reject); accepted cards
+  export to **`.apkg`** (genanki) with audio + cloze (TSV fallback, text-only).
+- **Dedup against `lexemes`:** don't suggest cards for words already `known` from
+  an earlier video — cross-video memory makes video #20 faster than #1.
+- **Rank/cap** suggestions (frequency × above-level × faux-ami) with a one-line
+  rationale each; SRS only pays off if you actually review.
+- Marks lifecycle: `unknown` (mark) → `learning` (card made) → `known`
+  (matured / user-set), propagated to `lexemes`.
 
-## Reshaped roadmap (supersedes Slices 3–4 in initial.md)
-- **Slice 3 — Shadow mode / pronunciation pass.** IPA (Lexique+espeak), clause &
-  word IPA on click, step mode, two-type marking. *No LLM.* (Pass 1)
-- **Slice 4 — Study mode / comprehension pass.** Reveal-on-demand clause
-  translations (Haiku), routed explanations of ❓ marks (Sonnet), lexeme tracking.
-  (Pass 2 a–c)
-- **Slice 5 — Card layer.** Mark→card inference + rationale, curation
-  (accept/reject), `.apkg` export with audio + cloze, lexeme dedup. (Pass 2 d)
+## Resolved decisions
+1. Pronunciation: Lexique first, espeak-ng fallback. *(done)*
+2. Two mark types: 🔊 pron / ❓ meaning, with an optional note. *(done)*
+3. Translation **on demand per clause** (click), hidden by default — Haiku.
+4. Export `.apkg` (audio + cloze).
+5. Repeat: auto-pause at clause end + Space to resume. *(done)*
+6. **Single unified flow** (no two-pass modes); marking yields explanation +
+   card suggestions immediately.
 
-Detailed task breakdowns are written just-in-time per slice (see `slice-3.md`).
+## Roadmap
+- **Slice 3 — Pronunciation** (IPA, marks, step). ✅
+- **Slice 4 — Meaning** (revised): per-clause translation on click (Haiku);
+  ❓ mark → explanation + suggested cards (Sonnet); lexeme tracking.
+- **Slice 5 — Cards out**: curation (accept/reject), `.apkg` export with audio +
+  cloze, pron→audio cards, lexeme dedup of suggestions.
+
+## History
+Originally specced as two passes (Shadow then Study) — see `git log` for the
+earlier `workflow.md`. Collapsed into one opt-in flow on 2026-06-07: simpler, and
+meaning stays opt-in so the anti-crutch property survives without enforced modes.

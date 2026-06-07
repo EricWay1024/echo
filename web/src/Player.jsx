@@ -1,5 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { getVideo, runPipeline, getIpa, addMark, deleteMark } from './api'
+import {
+  getVideo, runPipeline, getIpa, addMark, deleteMark,
+  getTranslation, explainMark, setCardStatus,
+} from './api'
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5]
 const clamp = (lo, hi, x) => Math.max(lo, Math.min(hi, x))
@@ -20,7 +23,7 @@ function findTok(starts, tMs) {
   return ans
 }
 
-const Transcript = memo(function Transcript({ view, markPron, markMeaning }) {
+const Transcript = memo(function Transcript({ view, markPron, markMeaning, trans }) {
   const cls = (gi) =>
     'w' + (markPron.has(gi) ? ' mp' : '') + (markMeaning.has(gi) ? ' mm' : '')
   if (view.segments) {
@@ -31,6 +34,12 @@ const Transcript = memo(function Transcript({ view, markPron, markMeaning }) {
             {t.text}
           </span>
         ))}
+        <button className="trbtn" data-tr={seg.seg_idx} title="translate this clause">
+          🌐
+        </button>
+        {trans[seg.seg_idx] !== undefined && (
+          <div className="trans">{trans[seg.seg_idx]}</div>
+        )}
       </div>
     ))
   }
@@ -53,10 +62,12 @@ export default function Player({ videoId }) {
   const [loopOn, setLoopOn] = useState(false)
   const [stepOn, setStepOn] = useState(false)
   const [rate, setRate] = useState(1)
-  const [mode, setMode] = useState('shadow') // shadow | study (study: Slice 4)
   const [ipa, setIpa] = useState(null)
   const [marks, setMarks] = useState([])
-  const [popover, setPopover] = useState(null) // {gi, segIdx, top, left}
+  const [popover, setPopover] = useState(null)
+  const [trans, setTrans] = useState({}) // segIdx -> text | '…'
+  const [lang, setLang] = useState('zh')
+  const [explain, setExplain] = useState(null) // {span, loading, error, exp, cards}
 
   const audioRef = useRef(null)
   const transcriptRef = useRef(null)
@@ -109,7 +120,6 @@ export default function Player({ videoId }) {
   marksRef.current = marks
   const pipelined = !!view?.segments
 
-  // gi sets covered by a mark of each kind (overlap of token span vs mark span).
   const { markPron, markMeaning } = useMemo(() => {
     const mp = new Set()
     const mm = new Set()
@@ -131,6 +141,8 @@ export default function Player({ videoId }) {
     setIpa(null)
     setMarks([])
     setPopover(null)
+    setTrans({})
+    setExplain(null)
     lastTokRef.current = -1
     curSegRef.current = -1
     getVideo(videoId)
@@ -140,9 +152,7 @@ export default function Player({ videoId }) {
         setMarks(d.marks || [])
       })
       .catch((e) => alive && setError(String(e.message || e)))
-    getIpa(videoId)
-      .then((d) => alive && setIpa(d))
-      .catch(() => {})
+    getIpa(videoId).then((d) => alive && setIpa(d)).catch(() => {})
     return () => {
       alive = false
       cancelAnimationFrame(rafRef.current)
@@ -165,7 +175,7 @@ export default function Player({ videoId }) {
   function setCurSeg(i) {
     if (i === curSegRef.current) return
     curSegRef.current = i
-    setPopover(null) // advancing to a new clause dismisses the IPA popover
+    setPopover(null)
     const c = transcriptRef.current
     if (!c) return
     const prev = c.querySelector('.segment.cur')
@@ -203,7 +213,7 @@ export default function Player({ videoId }) {
     const a = audioRef.current
     const v = viewRef.current
     if (a && v) setActiveTok(findTok(v.starts, a.currentTime * 1000))
-    stepPrevSegRef.current = curSegRef.current // a seek isn't a clause boundary
+    stepPrevSegRef.current = curSegRef.current
   }
 
   function tick() {
@@ -219,7 +229,6 @@ export default function Player({ videoId }) {
         }
       }
       setActiveTok(findTok(v.starts, t))
-      // Step mode: pause when we cross into a new clause (heard the previous one).
       if (stepRef.current && !loopRef.current && v.segMeta) {
         if (curSegRef.current !== stepPrevSegRef.current) {
           stepPrevSegRef.current = curSegRef.current
@@ -252,6 +261,44 @@ export default function Player({ videoId }) {
     }
   }
 
+  function toggleTranslate(seg) {
+    if (trans[seg] !== undefined) {
+      setTrans((p) => {
+        const n = { ...p }
+        delete n[seg]
+        return n
+      })
+      return
+    }
+    setTrans((p) => ({ ...p, [seg]: '…' }))
+    getTranslation(videoId, seg, lang)
+      .then((r) => setTrans((p) => ({ ...p, [seg]: r.text })))
+      .catch(() => setTrans((p) => ({ ...p, [seg]: '(translation failed)' })))
+  }
+
+  function switchLang(next) {
+    setLang(next)
+    setTrans({}) // translations are per-language; re-reveal in the new one
+  }
+
+  function runExplain(span) {
+    setExplain({ span, loading: true, error: null, exp: null, cards: [] })
+    explainMark(videoId, span)
+      .then((r) =>
+        setExplain({ span, loading: false, error: null, exp: r.explanation, cards: r.cards }),
+      )
+      .catch((e) =>
+        setExplain({ span, loading: false, error: String(e.message || e), exp: null, cards: [] }),
+      )
+  }
+
+  function cardStatus(cardId, status) {
+    setCardStatus(cardId, status).catch(() => {})
+    setExplain((e) =>
+      e ? { ...e, cards: e.cards.map((c) => (c.id === cardId ? { ...c, status } : c)) } : e,
+    )
+  }
+
   function toggleMark(tok, kind) {
     if (!tok) return
     const span = [tok.src_start, tok.src_end]
@@ -275,8 +322,12 @@ export default function Player({ videoId }) {
   }
 
   function onClickTranscript(e) {
-    // A drag-select is handled by onMouseUp; a plain word click seeks + IPA.
     if (!window.getSelection()?.isCollapsed) return
+    const trBtn = e.target.closest('[data-tr]')
+    if (trBtn) {
+      toggleTranslate(Number(trBtn.dataset.tr))
+      return
+    }
     const a = audioRef.current
     const v = viewRef.current
     const span = e.target.closest('[data-tok]')
@@ -286,30 +337,23 @@ export default function Player({ videoId }) {
     if (segEl) setCurSeg(Number(segEl.dataset.seg))
     a.currentTime = v.starts[gi] / 1000
     a.play()
-    if (mode === 'shadow') {
-      // Place the popover in the side gutter beside the word's line so it never
-      // covers the (centered) current clause. Flip to the left gutter, or fall
-      // back to below the word only when there's no gutter (narrow screen).
-      const r = span.getBoundingClientRect()
-      const cont = transcriptRef.current.getBoundingClientRect()
-      const POPW = 180
-      const POPH = 84
-      const GAP = 12
-      const vw = window.innerWidth
-      const vh = window.innerHeight
-      let left = cont.right + GAP
-      let top = r.top
-      if (left + POPW > vw - 8) left = cont.left - POPW - GAP
-      if (left < 8) {
-        left = Math.min(r.left, vw - POPW - 8)
-        top = r.bottom + 4
-      }
-      top = Math.max(8, Math.min(top, vh - POPH - 8))
-      setPopover({ type: 'ipa', gi, top, left })
+    // IPA popover in the side gutter (never over the centered clause)
+    const r = span.getBoundingClientRect()
+    const cont = transcriptRef.current.getBoundingClientRect()
+    const POPW = 180
+    const POPH = 84
+    const GAP = 12
+    let left = cont.right + GAP
+    let top = r.top
+    if (left + POPW > window.innerWidth - 8) left = cont.left - POPW - GAP
+    if (left < 8) {
+      left = Math.min(r.left, window.innerWidth - POPW - 8)
+      top = r.bottom + 4
     }
+    top = clamp(8, window.innerHeight - POPH - 8, top)
+    setPopover({ type: 'ipa', gi, top, left })
   }
 
-  // Drag-select text -> show the mark popover (kind + optional note -> confirm).
   function onMouseUpTranscript() {
     const sel = window.getSelection()
     const v = viewRef.current
@@ -324,9 +368,6 @@ export default function Player({ videoId }) {
     let a = Number(startEl.dataset.tok)
     let b = Number(endEl.dataset.tok)
     if (a > b) [a, b] = [b, a]
-    // A token's text carries its leading space, so the gap after a word belongs
-    // to the next token. If the selection only reached into that leading space
-    // (not the word's letters), don't include the next word.
     if (b > a && range.endContainer.nodeType === 3) {
       const txt = v.tokByGi[b].text
       const lead = txt.length - txt.trimStart().length
@@ -335,9 +376,8 @@ export default function Player({ videoId }) {
     const span = [v.tokByGi[a].src_start, v.tokByGi[b].src_end]
     const r = range.getBoundingClientRect()
     const POPW = 250
-    const POPH = 120
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - POPW - 8))
-    const top = Math.max(8, Math.min(r.bottom + 6, window.innerHeight - POPH - 8))
+    const left = clamp(8, window.innerWidth - POPW - 8, r.left)
+    const top = clamp(8, window.innerHeight - 130, r.bottom + 6)
     setPopover({ type: 'select', span, giStart: a, giEnd: b, kind: 'meaning', note: '', top, left })
   }
 
@@ -354,6 +394,7 @@ export default function Player({ videoId }) {
     ])
     window.getSelection()?.removeAllRanges()
     setPopover(null)
+    if (kind === 'meaning') runExplain(span)
   }
 
   useEffect(() => {
@@ -394,10 +435,8 @@ export default function Player({ videoId }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipelined, mode])
+  }, [pipelined])
 
-  // Dismiss the IPA popover on any click outside it (clicking another word then
-  // reopens via the transcript click, which fires after this mousedown).
   useEffect(() => {
     if (!popover) return
     function onDown(e) {
@@ -407,8 +446,6 @@ export default function Player({ videoId }) {
     return () => document.removeEventListener('mousedown', onDown)
   }, [popover])
 
-  // Keep the selection visible (a persistent class) while the mark popover is
-  // open — the native selection fades once the note input takes focus.
   useEffect(() => {
     if (popover?.type !== 'select') return
     const c = transcriptRef.current
@@ -448,24 +485,7 @@ export default function Player({ videoId }) {
   return (
     <main className="player">
       <div className="playerhead">
-        <div className="headrow">
-          <h2 className="ptitle">{data.video.title}</h2>
-          <div className="modes">
-            <button
-              className={`mode${mode === 'shadow' ? ' on' : ''}`}
-              onClick={() => setMode('shadow')}
-            >
-              shadow
-            </button>
-            <button
-              className={`mode${mode === 'study' ? ' on' : ''}`}
-              onClick={() => setMode('study')}
-              title="Translations & explanations land in Slice 4"
-            >
-              study
-            </button>
-          </div>
-        </div>
+        <h2 className="ptitle">{data.video.title}</h2>
         <audio
           ref={audioRef}
           className="audio"
@@ -491,6 +511,14 @@ export default function Player({ videoId }) {
           <button className="ctl" onClick={() => setReveal((r) => !r)}>
             {reveal ? 'hide text (H)' : 'reveal text (H)'}
           </button>
+          <div className="ctl langtoggle">
+            <button className={lang === 'zh' ? 'on' : ''} onClick={() => switchLang('zh')}>
+              中文
+            </button>
+            <button className={lang === 'en' ? 'on' : ''} onClick={() => switchLang('en')}>
+              EN
+            </button>
+          </div>
           {pipelined && (
             <>
               <button
@@ -515,9 +543,8 @@ export default function Player({ videoId }) {
           )}
         </div>
         <p className="hint">
-          {pipelined
-            ? 'click word: hear + IPA · select text → mark · ←/→ clause · R replay · S step · L loop · 1–5 speed'
-            : 'click word: hear + IPA · select text → mark · space play · rectify to unlock clauses'}
+          click word: hear + IPA · 🌐 translate clause · select text → mark (❓ also
+          explains) · ←/→ clause · R replay · S step · L loop · 1–5 speed
         </p>
       </div>
 
@@ -530,7 +557,7 @@ export default function Player({ videoId }) {
         onClick={onClickTranscript}
         onMouseUp={onMouseUpTranscript}
       >
-        <Transcript view={view} markPron={markPron} markMeaning={markMeaning} />
+        <Transcript view={view} markPron={markPron} markMeaning={markMeaning} trans={trans} />
       </div>
 
       {popover?.type === 'ipa' && popTok && (
@@ -586,10 +613,51 @@ export default function Player({ videoId }) {
           <div className="markpop-actions">
             <button onClick={() => setPopover(null)}>cancel</button>
             <button className="primary" onClick={confirmMark}>
-              add mark
+              {popover.kind === 'meaning' ? 'mark + explain' : 'add mark'}
             </button>
           </div>
         </div>
+      )}
+
+      {explain && (
+        <aside className="explainpanel">
+          <button className="explain-x" onClick={() => setExplain(null)}>
+            ✕
+          </button>
+          {explain.loading && <p className="muted">explaining…</p>}
+          {explain.error && <p className="error">{explain.error}</p>}
+          {explain.exp && (
+            <>
+              <div className="explain-head">
+                {explain.exp.lemma} · <span className="muted">{explain.exp.pos}</span>
+              </div>
+              <div className="explain-body">{explain.exp.body}</div>
+              <div className="explain-cards-h">suggested cards</div>
+              {explain.cards.map((c) => (
+                <div key={c.id} className={`card st-${c.status}`}>
+                  <div className="card-kind">{c.kind}</div>
+                  <div className="card-front">{c.front}</div>
+                  <div className="card-back">{c.back}</div>
+                  <div className="card-rat">{c.rationale}</div>
+                  <div className="card-actions">
+                    <button
+                      className={c.status === 'accepted' ? 'on' : ''}
+                      onClick={() => cardStatus(c.id, 'accepted')}
+                    >
+                      accept
+                    </button>
+                    <button
+                      className={c.status === 'rejected' ? 'on' : ''}
+                      onClick={() => cardStatus(c.id, 'rejected')}
+                    >
+                      reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </aside>
       )}
     </main>
   )

@@ -34,3 +34,20 @@ export const deleteMark = (id, span, kind) =>
   fetch(`/api/videos/${id}/marks/${span[0]}/${span[1]}/${kind}`, {
     method: 'DELETE',
   }).then(asJson)
+
+export const getTranslation = (id, segIdx, lang) =>
+  fetch(`/api/videos/${id}/translation/${segIdx}?lang=${lang}`).then(asJson)
+
+export const explainMark = (id, span) =>
+  fetch(`/api/videos/${id}/explain`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ span }),
+  }).then(asJson)
+
+export const setCardStatus = (cardId, status) =>
+  fetch(`/api/cards/${cardId}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  }).then(asJson)
