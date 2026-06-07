@@ -60,6 +60,7 @@ export default function Player({ videoId }) {
 
   const audioRef = useRef(null)
   const transcriptRef = useRef(null)
+  const popRef = useRef(null)
   const rafRef = useRef(0)
   const lastTokRef = useRef(-1)
   const curSegRef = useRef(-1)
@@ -164,6 +165,7 @@ export default function Player({ videoId }) {
   function setCurSeg(i) {
     if (i === curSegRef.current) return
     curSegRef.current = i
+    setPopover(null) // advancing to a new clause dismisses the IPA popover
     const c = transcriptRef.current
     if (!c) return
     const prev = c.querySelector('.segment.cur')
@@ -273,6 +275,8 @@ export default function Player({ videoId }) {
   }
 
   function onClickTranscript(e) {
+    // A drag-select is handled by onMouseUp; a plain word click seeks + IPA.
+    if (!window.getSelection()?.isCollapsed) return
     const a = audioRef.current
     const v = viewRef.current
     const span = e.target.closest('[data-tok]')
@@ -283,9 +287,73 @@ export default function Player({ videoId }) {
     a.currentTime = v.starts[gi] / 1000
     a.play()
     if (mode === 'shadow') {
+      // Place the popover in the side gutter beside the word's line so it never
+      // covers the (centered) current clause. Flip to the left gutter, or fall
+      // back to below the word only when there's no gutter (narrow screen).
       const r = span.getBoundingClientRect()
-      setPopover({ gi, segIdx: v.tokSeg ? v.tokSeg[gi] : -1, top: r.bottom + 4, left: r.left })
+      const cont = transcriptRef.current.getBoundingClientRect()
+      const POPW = 180
+      const POPH = 84
+      const GAP = 12
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      let left = cont.right + GAP
+      let top = r.top
+      if (left + POPW > vw - 8) left = cont.left - POPW - GAP
+      if (left < 8) {
+        left = Math.min(r.left, vw - POPW - 8)
+        top = r.bottom + 4
+      }
+      top = Math.max(8, Math.min(top, vh - POPH - 8))
+      setPopover({ type: 'ipa', gi, top, left })
     }
+  }
+
+  // Drag-select text -> show the mark popover (kind + optional note -> confirm).
+  function onMouseUpTranscript() {
+    const sel = window.getSelection()
+    const v = viewRef.current
+    const c = transcriptRef.current
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !v || !c) return
+    const range = sel.getRangeAt(0)
+    if (!c.contains(range.commonAncestorContainer)) return
+    const elOf = (n) => (n.nodeType === 3 ? n.parentElement : n)?.closest?.('[data-tok]')
+    const startEl = elOf(range.startContainer)
+    const endEl = elOf(range.endContainer)
+    if (!startEl || !endEl) return
+    let a = Number(startEl.dataset.tok)
+    let b = Number(endEl.dataset.tok)
+    if (a > b) [a, b] = [b, a]
+    // A token's text carries its leading space, so the gap after a word belongs
+    // to the next token. If the selection only reached into that leading space
+    // (not the word's letters), don't include the next word.
+    if (b > a && range.endContainer.nodeType === 3) {
+      const txt = v.tokByGi[b].text
+      const lead = txt.length - txt.trimStart().length
+      if (range.endOffset <= lead) b -= 1
+    }
+    const span = [v.tokByGi[a].src_start, v.tokByGi[b].src_end]
+    const r = range.getBoundingClientRect()
+    const POPW = 250
+    const POPH = 120
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - POPW - 8))
+    const top = Math.max(8, Math.min(r.bottom + 6, window.innerHeight - POPH - 8))
+    setPopover({ type: 'select', span, giStart: a, giEnd: b, kind: 'meaning', note: '', top, left })
+  }
+
+  function confirmMark() {
+    if (popover?.type !== 'select') return
+    const { span, kind, note } = popover
+    const n = note.trim() || null
+    addMark(videoId, span, kind, n).catch(() => {})
+    setMarks((ms) => [
+      ...ms.filter(
+        (m) => !(m.kind === kind && m.span_start === span[0] && m.span_end === span[1]),
+      ),
+      { span_start: span[0], span_end: span[1], kind, status: 'unknown', note: n },
+    ])
+    window.getSelection()?.removeAllRanges()
+    setPopover(null)
   }
 
   useEffect(() => {
@@ -328,6 +396,34 @@ export default function Player({ videoId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelined, mode])
 
+  // Dismiss the IPA popover on any click outside it (clicking another word then
+  // reopens via the transcript click, which fires after this mousedown).
+  useEffect(() => {
+    if (!popover) return
+    function onDown(e) {
+      if (popRef.current && !popRef.current.contains(e.target)) setPopover(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [popover])
+
+  // Keep the selection visible (a persistent class) while the mark popover is
+  // open — the native selection fades once the note input takes focus.
+  useEffect(() => {
+    if (popover?.type !== 'select') return
+    const c = transcriptRef.current
+    if (!c) return
+    const els = []
+    for (let g = popover.giStart; g <= popover.giEnd; g++) {
+      const el = c.querySelector(`[data-tok="${g}"]`)
+      if (el) {
+        el.classList.add('selmark')
+        els.push(el)
+      }
+    }
+    return () => els.forEach((el) => el.classList.remove('selmark'))
+  }, [popover])
+
   async function rectify() {
     setPipelining(true)
     setError(null)
@@ -347,13 +443,7 @@ export default function Player({ videoId }) {
   if (error) return <p className="error">{error}</p>
   if (!data) return <p className="muted">loading transcript…</p>
 
-  const popTok = popover && view ? view.tokByGi[popover.gi] : null
-  const popSpan = popTok ? [popTok.src_start, popTok.src_end] : null
-  const has = (kind) =>
-    popSpan &&
-    marks.some(
-      (m) => m.kind === kind && m.span_start === popSpan[0] && m.span_end === popSpan[1],
-    )
+  const popTok = popover?.type === 'ipa' && view ? view.tokByGi[popover.gi] : null
 
   return (
     <main className="player">
@@ -426,8 +516,8 @@ export default function Player({ videoId }) {
         </div>
         <p className="hint">
           {pipelined
-            ? 'click word: hear + IPA · P 🔊 / M ❓ mark · ←/→ clause · R replay · S step · L loop · 1–5 speed'
-            : 'click word to jump · P/M mark · space play · rectify to unlock clauses'}
+            ? 'click word: hear + IPA · select text → mark · ←/→ clause · R replay · S step · L loop · 1–5 speed'
+            : 'click word: hear + IPA · select text → mark · space play · rectify to unlock clauses'}
         </p>
       </div>
 
@@ -438,12 +528,14 @@ export default function Player({ videoId }) {
         }`}
         lang="fr"
         onClick={onClickTranscript}
+        onMouseUp={onMouseUpTranscript}
       >
         <Transcript view={view} markPron={markPron} markMeaning={markMeaning} />
       </div>
 
-      {popover && popTok && (
+      {popover?.type === 'ipa' && popTok && (
         <div
+          ref={popRef}
           className="ipapop"
           style={{ top: popover.top, left: popover.left }}
           onClick={(e) => e.stopPropagation()}
@@ -455,21 +547,46 @@ export default function Player({ videoId }) {
           <div className="ipapop-ipa">
             {ipa?.tokens?.[popover.gi] ? `/${ipa.tokens[popover.gi]}/` : '— no IPA —'}
           </div>
-          {popover.segIdx >= 0 && ipa?.segments?.[popover.segIdx] && (
-            <div className="ipapop-clause">clause: /{ipa.segments[popover.segIdx]}/</div>
-          )}
-          <div className="ipapop-marks">
+        </div>
+      )}
+
+      {popover?.type === 'select' && (
+        <div
+          ref={popRef}
+          className="markpop"
+          style={{ top: popover.top, left: popover.left }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="markpop-kind">
             <button
-              className={has('pron') ? 'on' : ''}
-              onClick={() => toggleMark(popTok, 'pron')}
+              className={popover.kind === 'pron' ? 'on' : ''}
+              onClick={() => setPopover({ ...popover, kind: 'pron' })}
             >
               🔊 pron
             </button>
             <button
-              className={has('meaning') ? 'on' : ''}
-              onClick={() => toggleMark(popTok, 'meaning')}
+              className={popover.kind === 'meaning' ? 'on' : ''}
+              onClick={() => setPopover({ ...popover, kind: 'meaning' })}
             >
               ❓ meaning
+            </button>
+          </div>
+          <input
+            className="markpop-note"
+            placeholder="note (optional)…"
+            autoFocus
+            value={popover.note}
+            onChange={(e) => setPopover({ ...popover, note: e.target.value })}
+            onKeyDown={(e) => {
+              e.stopPropagation()
+              if (e.key === 'Enter') confirmMark()
+              else if (e.key === 'Escape') setPopover(null)
+            }}
+          />
+          <div className="markpop-actions">
+            <button onClick={() => setPopover(null)}>cancel</button>
+            <button className="primary" onClick={confirmMark}>
+              add mark
             </button>
           </div>
         </div>

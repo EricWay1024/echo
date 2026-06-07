@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS marks (
     span_end   INTEGER NOT NULL,
     kind       TEXT    NOT NULL,   -- pron | meaning
     status     TEXT,               -- unknown | learning | known
+    note       TEXT,               -- optional user comment
     created_at TEXT,
     PRIMARY KEY (video_id, span_start, span_end, kind)
 );

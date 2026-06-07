@@ -87,7 +87,8 @@ def add_mark(video_id: str, payload: dict) -> dict:
     conn = db.connect(cfg.db_path)
     try:
         db.add_mark(conn, video_id, int(span[0]), int(span[1]), kind,
-                    (payload or {}).get("status", "unknown"))
+                    (payload or {}).get("status", "unknown"),
+                    note=(payload or {}).get("note"))
     finally:
         conn.close()
     return {"ok": True}

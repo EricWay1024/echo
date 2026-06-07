@@ -16,10 +16,13 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path) -> None:
-    """Create tables if absent. Idempotent."""
+    """Create tables if absent + apply lightweight column migrations. Idempotent."""
     conn = connect(db_path)
     try:
         conn.executescript(SCHEMA)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(marks)")}
+        if "note" not in cols:
+            conn.execute("ALTER TABLE marks ADD COLUMN note TEXT")
         conn.commit()
     finally:
         conn.close()
@@ -106,7 +109,7 @@ def load_segments(conn, video_id: str) -> list[dict]:
 
 def load_marks(conn, video_id: str) -> list[dict]:
     rows = conn.execute(
-        "SELECT span_start, span_end, kind, status, created_at FROM marks "
+        "SELECT span_start, span_end, kind, status, note, created_at FROM marks "
         "WHERE video_id = ? ORDER BY span_start, kind",
         (video_id,),
     ).fetchall()
@@ -114,14 +117,14 @@ def load_marks(conn, video_id: str) -> list[dict]:
 
 
 def add_mark(conn, video_id: str, span_start: int, span_end: int, kind: str,
-             status: str = "unknown") -> None:
+             status: str = "unknown", note: str | None = None) -> None:
     import datetime as _dt
 
     conn.execute(
         "INSERT OR REPLACE INTO marks "
-        "(video_id, span_start, span_end, kind, status, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (video_id, span_start, span_end, kind, status,
+        "(video_id, span_start, span_end, kind, status, note, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (video_id, span_start, span_end, kind, status, note,
          _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")),
     )
     conn.commit()

@@ -7,6 +7,7 @@
   --accent: #b45309;
   --active-bg: #ffe7b0;
   --hover-bg: #efe9dc;
+  --sel-bg: #ffd58a;
 }
 
 * { box-sizing: border-box; }
@@ -126,6 +127,16 @@ body {
   box-shadow: 0 0 0 2px var(--active-bg);
 }
 
+/* nicer text selection in the transcript, and a frozen highlight that persists
+   while the mark popover is open */
+.transcript ::selection { background: var(--sel-bg); }
+.transcript ::-moz-selection { background: var(--sel-bg); }
+.w.selmark {
+  background: var(--sel-bg);
+  box-shadow: 0 0 0 2px var(--sel-bg);
+  border-radius: 4px;
+}
+
 /* ---- transport controls ---- */
 .controls {
   display: flex;
@@ -215,7 +226,8 @@ body {
   border-radius: 10px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
   padding: 10px 14px 10px 12px;
-  min-width: 150px;
+  min-width: 140px;
+  max-width: 180px;
   font-family: ui-sans-serif, system-ui, sans-serif;
 }
 .ipapop-x {
@@ -236,13 +248,45 @@ body {
   margin: 2px 0;
 }
 .ipapop-clause { font-size: 0.78rem; color: var(--muted); }
-.ipapop-marks { display: flex; gap: 6px; margin-top: 8px; }
-.ipapop-marks button {
-  font-size: 0.78rem;
-  padding: 4px 8px;
+/* ---- mark (select → annotate → confirm) popover ---- */
+.markpop {
+  position: fixed;
+  z-index: 50;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+  padding: 10px 12px;
+  width: 234px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.markpop-kind { display: flex; gap: 6px; }
+.markpop-kind button {
+  flex: 1;
+  font-size: 0.8rem;
+  padding: 5px 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg);
   cursor: pointer;
 }
-.ipapop-marks button.on { border-color: var(--accent); color: var(--accent); background: #fff8ec; }
+.markpop-kind button.on { border-color: var(--accent); color: var(--accent); background: #fff8ec; }
+.markpop-note {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 8px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.markpop-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.markpop-actions button {
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  cursor: pointer;
+}
+.markpop-actions .primary { background: var(--accent); color: #fff; border-color: var(--accent); }

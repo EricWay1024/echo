@@ -23,11 +23,11 @@ export const runPipeline = (id) =>
 
 export const getIpa = (id) => fetch(`/api/videos/${id}/ipa`).then(asJson)
 
-export const addMark = (id, span, kind) =>
+export const addMark = (id, span, kind, note = null) =>
   fetch(`/api/videos/${id}/marks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ span, kind }),
+    body: JSON.stringify({ span, kind, note }),
   }).then(asJson)
 
 export const deleteMark = (id, span, kind) =>
