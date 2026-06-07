@@ -199,13 +199,14 @@ def _run_explain(video_id: str, s: int, e: int) -> None:
         note = next((m.get("note") for m in db.load_marks(conn, video_id)
                      if m["span_start"] == s and m["span_end"] == e
                      and m["kind"] == "meaning"), None)
-        known = db.load_known_lemmas(conn)
         span_text, clause = _span_and_clause(words, rendered, s, e)
     finally:
         conn.close()
 
+    # 'known' dedup disabled for now — re-enable by loading
+    # db.load_known_lemmas(conn) above and passing known= here.
     data = study.explain_and_suggest(cfg, span_text, clause,
-                                     study.profile_str(cfg), note, known=known)
+                                     study.profile_str(cfg), note)
     conn = db.connect(cfg.db_path)
     try:
         db.store_explanation(conn, video_id, s, e, data["lang"], data["lemma"],

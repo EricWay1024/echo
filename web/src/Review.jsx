@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getVideo, explainMark, setCardStatus, setLexeme } from './api'
+import { getVideo, explainMark, setCardStatus } from './api'
 
 const key = (m) => `${m.span_start}-${m.span_end}`
 
@@ -79,10 +79,6 @@ export default function Review({ videoId, onBack }) {
     setCards((cs) => cs.map((c) => (c.id === id ? { ...c, status } : c)))
   }
 
-  function known(lemma) {
-    if (lemma) setLexeme(lemma, 'fr', 'known').catch(() => {})
-  }
-
   const card = (c) => (
     <div key={c.id} className={`card st-${c.status}`}>
       <div className="card-kind">{c.kind}</div>
@@ -132,7 +128,6 @@ export default function Review({ videoId, onBack }) {
                 <>
                   <div className="explain-head">
                     {exp.lemma} · <span className="muted">{exp.pos}</span>
-                    <button className="knownbtn" onClick={() => known(exp.lemma)}>✓ known</button>
                   </div>
                   <div className="explain-body">{exp.body}</div>
                   {cardsFor(m).map(card)}
