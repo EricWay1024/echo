@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getVideo, explainMark, setCardStatus } from './api'
+import { getVideo, explainMark, setCardStatus, getTranslation } from './api'
 
 const key = (m) => `${m.span_start}-${m.span_end}`
 
@@ -12,9 +12,13 @@ export default function Review({ videoId, onBack }) {
   const [busy, setBusy] = useState(false)
   const audioRef = useRef(null)
   const stopAtRef = useRef(null)
+  const [trans, setTrans] = useState({}) // seg_idx -> translation | '…'
+  const reqRef = useRef(new Set())
 
   useEffect(() => {
     let alive = true
+    setTrans({})
+    reqRef.current = new Set()
     getVideo(videoId)
       .then((d) => {
         if (!alive) return
@@ -27,6 +31,26 @@ export default function Review({ videoId, onBack }) {
       alive = false
     }
   }, [videoId])
+
+  // Fetch (cached) 中文 translations for every marked clause once data is loaded.
+  useEffect(() => {
+    if (!data?.render) return
+    const segs = new Set()
+    for (const m of data.marks || []) {
+      const seg = data.render.find(
+        (s) => s.span_start <= m.span_start && m.span_start <= s.span_end,
+      )
+      if (seg) segs.add(seg.seg_idx)
+    }
+    segs.forEach((si) => {
+      if (reqRef.current.has(si)) return
+      reqRef.current.add(si)
+      setTrans((p) => ({ ...p, [si]: '…' }))
+      getTranslation(videoId, si, 'zh')
+        .then((r) => setTrans((p) => ({ ...p, [si]: r.text })))
+        .catch(() => setTrans((p) => ({ ...p, [si]: '(translation failed)' })))
+    })
+  }, [data, videoId])
 
   if (error) return <p className="error">{error}</p>
   if (!data) return <p className="muted">loading…</p>
@@ -56,19 +80,24 @@ export default function Review({ videoId, onBack }) {
     )
     if (!seg) return null
     return (
-      <div className="review-clause" lang="fr">
-        <button className="clauseplay" title="play this clause" onClick={() => playClause(seg)}>
-          ▶
-        </button>
-        {seg.tokens.map((t, i) => (
-          <span
-            key={i}
-            className={t.src_start <= m.span_end && m.span_start <= t.src_end ? 'hl' : ''}
-          >
-            {t.text}
-          </span>
-        ))}
-      </div>
+      <>
+        <div className="review-clause" lang="fr">
+          <button className="clauseplay" title="play this clause" onClick={() => playClause(seg)}>
+            ▶
+          </button>
+          {seg.tokens.map((t, i) => (
+            <span
+              key={i}
+              className={t.src_start <= m.span_end && m.span_start <= t.src_end ? 'hl' : ''}
+            >
+              {t.text}
+            </span>
+          ))}
+        </div>
+        {trans[seg.seg_idx] !== undefined && (
+          <div className="review-trans">{trans[seg.seg_idx]}</div>
+        )}
+      </>
     )
   }
   const meaningMarks = (data.marks || []).filter((m) => m.kind === 'meaning')

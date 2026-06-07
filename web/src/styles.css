@@ -356,6 +356,16 @@ a.ctl { text-decoration: none; display: inline-flex; }
   padding: 0;
   vertical-align: middle;
 }
+.review-trans {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.95rem;
+  color: var(--fg);
+  background: #f4efe6;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
 
 /* ---- marks ---- */
 .w.mp { text-decoration: underline dotted var(--accent); text-underline-offset: 4px; }
