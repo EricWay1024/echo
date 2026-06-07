@@ -16,12 +16,14 @@ export default function Review({ videoId, onBack }) {
   const [busy, setBusy] = useState(false)
   const audioRef = useRef(null)
   const stopAtRef = useRef(null)
+  const [playingSeg, setPlayingSeg] = useState(null)
   const [trans, setTrans] = useState({}) // seg_idx -> translation | '…'
   const reqRef = useRef(new Set())
 
   useEffect(() => {
     let alive = true
     setTrans({})
+    setPlayingSeg(null)
     reqRef.current = new Set()
     getVideo(videoId)
       .then((d) => {
@@ -64,9 +66,14 @@ export default function Review({ videoId, onBack }) {
   function playClause(seg) {
     const a = audioRef.current
     if (!a) return
+    if (playingSeg === seg.seg_idx && !a.paused) {
+      a.pause() // clicking the playing clause again pauses it
+      return
+    }
     a.currentTime = seg.start_ms / 1000
     stopAtRef.current = seg.end_ms / 1000
     a.play()
+    setPlayingSeg(seg.seg_idx)
   }
 
   function onAudioTime() {
@@ -86,8 +93,12 @@ export default function Review({ videoId, onBack }) {
     return (
       <>
         <div className="review-clause" lang="fr">
-          <button className="clauseplay" title="play this clause" onClick={() => playClause(seg)}>
-            ▶
+          <button
+            className="clauseplay"
+            title={playingSeg === seg.seg_idx ? 'pause' : 'play this clause'}
+            onClick={() => playClause(seg)}
+          >
+            {playingSeg === seg.seg_idx ? '⏸' : '▶'}
           </button>
           {seg.tokens.map((t, i) => (
             <span
@@ -113,11 +124,11 @@ export default function Review({ videoId, onBack }) {
   const todo = meaningMarks.filter((m) => !expFor(m))
   const acceptedCount = cards.filter((c) => c.status === 'accepted').length
 
-  async function explainOne(m) {
+  async function explainOne(m, force = false) {
     const k = key(m)
     setPending((p) => new Set(p).add(k))
     try {
-      const r = await explainMark(videoId, [m.span_start, m.span_end])
+      const r = await explainMark(videoId, [m.span_start, m.span_end], force)
       setExplanations((xs) => [
         ...xs.filter((x) => !(x.span_start === m.span_start && x.span_end === m.span_end)),
         { span_start: m.span_start, span_end: m.span_end, ...r.explanation },
@@ -174,6 +185,8 @@ export default function Review({ videoId, onBack }) {
         src={`/audio/${videoId}.opus`}
         preload="none"
         onTimeUpdate={onAudioTime}
+        onPause={() => setPlayingSeg(null)}
+        onEnded={() => setPlayingSeg(null)}
       />
       <div className="review-bar">
         <button className="ctl" onClick={onBack}>← shadow</button>
@@ -208,6 +221,14 @@ export default function Review({ videoId, onBack }) {
                 <>
                   <div className="explain-head">
                     {exp.lemma} · <span className="muted">{exp.pos}</span>
+                    <button
+                      className="regenbtn"
+                      title="regenerate this explanation + cards"
+                      disabled={pending.has(key(m))}
+                      onClick={() => explainOne(m, true)}
+                    >
+                      {pending.has(key(m)) ? '…' : '↻ regenerate'}
+                    </button>
                   </div>
                   <div className="explain-body">{exp.body}</div>
                   {cardsFor(m).map(card)}

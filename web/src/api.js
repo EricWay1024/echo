@@ -38,11 +38,11 @@ export const deleteMark = (id, span, kind) =>
 export const getTranslation = (id, segIdx, lang) =>
   fetch(`/api/videos/${id}/translation/${segIdx}?lang=${lang}`).then(asJson)
 
-export const explainMark = (id, span) =>
+export const explainMark = (id, span, force = false) =>
   fetch(`/api/videos/${id}/explain`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ span }),
+    body: JSON.stringify({ span, force }),
   }).then(asJson)
 
 export const setCardStatus = (cardId, status) =>

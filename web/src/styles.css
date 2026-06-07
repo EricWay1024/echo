@@ -311,6 +311,18 @@ a.ctl { text-decoration: none; display: inline-flex; }
   color: var(--muted);
 }
 .knownbtn:hover { border-color: var(--accent); color: var(--accent); }
+.regenbtn {
+  float: right;
+  font-size: 0.72rem;
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+  color: var(--muted);
+}
+.regenbtn:hover { border-color: var(--accent); color: var(--accent); }
+.regenbtn:disabled { opacity: 0.5; cursor: default; }
 
 /* ---- review page ---- */
 .ctl.reviewbtn { border-color: var(--accent); color: var(--accent); }
