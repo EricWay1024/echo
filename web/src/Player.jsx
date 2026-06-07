@@ -1,5 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { getVideo, runPipeline, getIpa, addMark, deleteMark, getTranslation } from './api'
+import {
+  getVideo, runPipeline, getIpa, addMark, deleteMark, getTranslation, saveProgress,
+} from './api'
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5]
 const clamp = (lo, hi, x) => Math.max(lo, Math.min(hi, x))
@@ -76,6 +78,8 @@ export default function Player({ videoId, onReview }) {
   const stepPrevSegRef = useRef(-1)
   const viewRef = useRef(null)
   const marksRef = useRef([])
+  const restoreRef = useRef(0) // resume position (ms) to seek once audio is ready
+  const lastSaveRef = useRef(0)
 
   const view = useMemo(() => {
     if (!data) return null
@@ -140,9 +144,11 @@ export default function Player({ videoId, onReview }) {
     setTrans({})
     lastTokRef.current = -1
     curSegRef.current = -1
+    restoreRef.current = 0
     getVideo(videoId)
       .then((d) => {
         if (!alive) return
+        restoreRef.current = d.video.last_pos_ms || 0
         setData(d)
         setMarks(d.marks || [])
       })
@@ -151,6 +157,10 @@ export default function Player({ videoId, onReview }) {
     return () => {
       alive = false
       cancelAnimationFrame(rafRef.current)
+      const a = audioRef.current
+      if (a && a.currentTime > 0) {
+        saveProgress(videoId, Math.round(a.currentTime * 1000)).catch(() => {})
+      }
     }
   }, [videoId])
 
@@ -163,9 +173,36 @@ export default function Player({ videoId, onReview }) {
   }, [rate, data])
 
   useEffect(() => {
-    if (pipelined) gotoSeg(0, { seek: false })
+    // Highlight the first clause, unless we're about to restore a resume point.
+    if (pipelined && restoreRef.current === 0) gotoSeg(0, { seek: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelined])
+
+  // Seek to the saved resume point once the audio can seek.
+  function onLoadedMeta() {
+    const a = audioRef.current
+    if (a && restoreRef.current > 0) {
+      a.currentTime = restoreRef.current / 1000
+      restoreRef.current = 0
+      syncHighlight()
+    }
+  }
+
+  // Best-effort save on tab close / navigation away.
+  useEffect(() => {
+    function onHide() {
+      const a = audioRef.current
+      if (a && a.currentTime > 0 && navigator.sendBeacon) {
+        navigator.sendBeacon(
+          `/api/videos/${videoId}/progress`,
+          new Blob([JSON.stringify({ pos_ms: Math.round(a.currentTime * 1000) })],
+            { type: 'application/json' }),
+        )
+      }
+    }
+    window.addEventListener('pagehide', onHide)
+    return () => window.removeEventListener('pagehide', onHide)
+  }, [videoId])
 
   function setCurSeg(i) {
     if (i === curSegRef.current) return
@@ -210,6 +247,14 @@ export default function Player({ videoId, onReview }) {
     stepPrevSegRef.current = curSegRef.current
   }
 
+  function persist() {
+    const a = audioRef.current
+    if (a && a.currentTime > 0) {
+      lastSaveRef.current = Date.now()
+      saveProgress(videoId, Math.round(a.currentTime * 1000)).catch(() => {})
+    }
+  }
+
   function tick() {
     const a = audioRef.current
     const v = viewRef.current
@@ -229,6 +274,7 @@ export default function Player({ videoId, onReview }) {
           a.pause()
         }
       }
+      if (Date.now() - lastSaveRef.current > 5000) persist() // resume point
     }
     rafRef.current = requestAnimationFrame(tick)
   }
@@ -240,6 +286,7 @@ export default function Player({ videoId, onReview }) {
   function stopLoop() {
     cancelAnimationFrame(rafRef.current)
     syncHighlight()
+    persist() // save resume point on pause/ended
   }
 
   function gotoSeg(i, { seek = true, play = false } = {}) {
@@ -477,6 +524,7 @@ export default function Player({ videoId, onReview }) {
           controls
           preload="auto"
           src={`/audio/${videoId}.opus`}
+          onLoadedMetadata={onLoadedMeta}
           onPlay={startLoop}
           onPause={stopLoop}
           onEnded={stopLoop}

@@ -282,6 +282,17 @@ def add_video(payload: dict) -> dict:
     return {"id": result.id, "title": result.title, "words": len(result.words)}
 
 
+@app.post("/api/videos/{video_id}/progress")
+def set_progress(video_id: str, payload: dict) -> dict:
+    pos = max(0, int((payload or {}).get("pos_ms") or 0))
+    conn = db.connect(cfg.db_path)
+    try:
+        db.set_progress(conn, video_id, pos)
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
 @app.post("/api/videos/{video_id}/pipeline")
 def run_pipeline(video_id: str, force: bool = False) -> dict:
     from . import pipeline  # local import keeps the SDK off the hot import path

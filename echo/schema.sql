@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS videos (
     audio_path  TEXT,               -- relative to data_dir/audio
     description TEXT,               -- kept for LLM context (Slice 2)
     fetched_at  TEXT,               -- ISO8601
-    status      TEXT                -- fetched | pipelined | ...
+    status      TEXT,               -- fetched | pipelined | ...
+    last_pos_ms INTEGER             -- resume point (last playback position)
 );
 
 -- Ground truth. IMMUTABLE after fetch. Every later edit references these indices.

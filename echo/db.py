@@ -20,9 +20,12 @@ def init_db(db_path: Path) -> None:
     conn = connect(db_path)
     try:
         conn.executescript(SCHEMA)
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(marks)")}
-        if "note" not in cols:
+        mcols = {r[1] for r in conn.execute("PRAGMA table_info(marks)")}
+        if "note" not in mcols:
             conn.execute("ALTER TABLE marks ADD COLUMN note TEXT")
+        vcols = {r[1] for r in conn.execute("PRAGMA table_info(videos)")}
+        if "last_pos_ms" not in vcols:
+            conn.execute("ALTER TABLE videos ADD COLUMN last_pos_ms INTEGER")
         conn.commit()
     finally:
         conn.close()
@@ -54,6 +57,11 @@ def store_video(conn, result, *, status: str = "fetched") -> None:
         "VALUES (?, ?, ?, ?, ?)",
         [(result.id, w.idx, w.text, w.start_ms, w.dur_ms) for w in result.words],
     )
+    conn.commit()
+
+
+def set_progress(conn, video_id: str, pos_ms: int) -> None:
+    conn.execute("UPDATE videos SET last_pos_ms = ? WHERE id = ?", (pos_ms, video_id))
     conn.commit()
 
 

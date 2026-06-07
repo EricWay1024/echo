@@ -23,6 +23,13 @@ export const runPipeline = (id) =>
 
 export const getIpa = (id) => fetch(`/api/videos/${id}/ipa`).then(asJson)
 
+export const saveProgress = (id, posMs) =>
+  fetch(`/api/videos/${id}/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pos_ms: posMs }),
+  }).then(asJson)
+
 export const addMark = (id, span, kind, note = null) =>
   fetch(`/api/videos/${id}/marks`, {
     method: 'POST',
