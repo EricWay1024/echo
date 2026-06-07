@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+web/dist/
+
+# App data (audio + sqlite). Fixtures under tests/fixtures/ ARE committed.
+/data/
+
+# Secrets — never commit. Commit config.toml.example instead.
+/config.toml
+/.env
+
+# Editor / OS
+.DS_Store

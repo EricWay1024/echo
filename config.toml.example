@@ -1,0 +1,21 @@
+# Copy to config.toml and fill in. config.toml is gitignored (it holds your key).
+
+[user]
+known  = [ {lang="en", level="C1"}, {lang="zh", level="native"}, {lang="yue", level="conversational"} ]
+target = {lang="fr", level="B2"}
+
+[llm]
+provider = "anthropic"
+model = "claude-opus-4-8"        # strongest available
+
+# Provide the key in ONE of two ways:
+#   (a) env var (recommended): leave api_key_env set, then `export ANTHROPIC_API_KEY=sk-ant-...`
+api_key_env = "ANTHROPIC_API_KEY"
+#   (b) inline (local-only convenience): uncomment and paste the key. Stays out of git.
+# api_key = "sk-ant-..."
+
+[paths]
+data_dir = "~/echo-data"
+
+[server]
+port = 7777
