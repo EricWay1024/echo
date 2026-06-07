@@ -62,7 +62,9 @@ bare blank; `back` = a short gloss of the answer.
   - vocab/grammar/usage: `front` = a prompt or question (in the required \
 language, quoting French where needed); `back` = the answer with a brief gloss.
 
-Output ONLY a JSON object with these keys. No prose, no markdown, no code fences."""
+For any line break inside a field, use "<br>" — never a raw newline inside a JSON \
+string. Output ONLY a JSON object with these keys. No prose, no markdown, no code \
+fences."""
 
 
 def _explain_system(lang_name: str) -> str:
@@ -72,8 +74,11 @@ def _explain_system(lang_name: str) -> str:
         f"text on a card `front` in {lang_name}.\n"
         f"- The ONLY French permitted is the actual French being studied: the cloze "
         f"`front` (the real French clause) and French words/phrases you quote.\n"
-        f"- Never write explanations, glosses, prompts, or rationales in French or "
-        f"any language other than {lang_name}.\n\n"
+        f"- Never write explanations, glosses, or prompts in any language other "
+        f"than {lang_name}.\n"
+        f"- For quotation marks INSIDE the text, use 「」 or full-width “”; NEVER "
+        f"use the ASCII straight double-quote (\") inside a value — that character "
+        f"must appear ONLY as a JSON string delimiter, or the JSON breaks.\n\n"
         + EXPLAIN_SYSTEM_BASE
     )
 
@@ -104,7 +109,9 @@ def _loads_loose(text: str) -> dict:
     a, b = text.find("{"), text.rfind("}")
     if a == -1 or b <= a:
         raise ValueError("no JSON object in response")
-    return json.loads(text[a:b + 1])
+    # strict=False tolerates literal newlines/tabs inside string values — the
+    # model often emits multi-line card content (e.g. conjugation tables).
+    return json.loads(text[a:b + 1], strict=False)
 
 
 def explain_and_suggest(cfg, span_text: str, clause: str, profile: str,
@@ -120,7 +127,7 @@ def explain_and_suggest(cfg, span_text: str, clause: str, profile: str,
     system = _explain_system(_lang_name(lang))
     client = _client(cfg)
     extra = ""
-    for _ in (1, 2):
+    for _ in range(3):
         msg = client.messages.create(
             model=cfg.llm_model,
             max_tokens=4000,
@@ -137,7 +144,10 @@ def explain_and_suggest(cfg, span_text: str, clause: str, profile: str,
             data["lang"] = lang  # fixed by config, not model-chosen
             return data
         except (ValueError, json.JSONDecodeError):
-            extra = "\n\nReturn ONLY a valid JSON object — no code fences, no prose."
+            extra = ("\n\nYour previous output was NOT valid JSON. The usual cause "
+                     "is an ASCII double-quote (\") used as a quotation mark inside "
+                     "a value — use 「」 instead — or a raw newline (use <br>). "
+                     "Return ONLY one valid JSON object.")
     raise RuntimeError("explain: could not parse a valid JSON response")
 
 
