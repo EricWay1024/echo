@@ -142,4 +142,4 @@ are fractions of a cent. Cached, so you pay once.
 
 ## License
 
-MIT — add a `LICENSE` file before publishing.
+[MIT](LICENSE) © 2026 Yuhang Wei.
