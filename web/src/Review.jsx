@@ -154,7 +154,6 @@ export default function Review({ videoId, onBack }) {
       <div className="card-kind">{c.kind}</div>
       <div className="card-front">{c.front}</div>
       <div className="card-back">{c.back}</div>
-      {c.rationale && <div className="card-rat">{c.rationale}</div>}
       <div className="card-actions">
         <button className={c.status === 'accepted' ? 'on' : ''}
           onClick={() => cardStatus(c.id, 'accepted')}>accept</button>

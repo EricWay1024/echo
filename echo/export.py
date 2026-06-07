@@ -67,11 +67,8 @@ def build_apkg(cfg, conn, video_id: str, out_dir: Path) -> Path:
                 model=CLOZE_MODEL, fields=[c["front"] or "", c["back"] or ""],
                 guid=genanki.guid_for(video_id, "cloze", c["front"])))
         else:
-            back = c["back"] or ""
-            if c["rationale"]:
-                back += f"<br><br><i>{c['rationale']}</i>"
             deck.add_note(genanki.Note(
-                model=BASIC_MODEL, fields=[c["front"] or "", back],
+                model=BASIC_MODEL, fields=[c["front"] or "", c["back"] or ""],
                 guid=genanki.guid_for(video_id, "basic", c["front"])))
 
     # 🔊 pron marks -> audio cards (clip the enclosing clause).

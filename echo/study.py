@@ -55,7 +55,7 @@ here, and the collocation/usage in this context.
 - cards: 1-3 ATOMIC Anki suggestions (one idea each). Prefer a cloze built from \
 the REAL clause using Anki syntax {{c1::target}} on the front and the answer + a \
 short gloss on the back. Prefer collocations over bare words. kind ∈ \
-cloze|vocab|grammar|usage. Each card: front, back, and a one-line rationale.
+cloze|vocab|grammar|usage. Each card has just `kind`, `front`, and `back`.
 
 Output ONLY a JSON object with these keys. No prose, no markdown, no code fences."""
 
@@ -63,8 +63,8 @@ Output ONLY a JSON object with these keys. No prose, no markdown, no code fences
 def _explain_system(lang_name: str) -> str:
     return (
         f"Language rules (STRICT):\n"
-        f"- Write the `explanation`, every card `back`, every `rationale`, and any "
-        f"question/prompt text on a card `front` in {lang_name}.\n"
+        f"- Write the `explanation`, every card `back`, and any question/prompt "
+        f"text on a card `front` in {lang_name}.\n"
         f"- The ONLY French permitted is the actual French being studied: the cloze "
         f"`front` (the real French clause) and French words/phrases you quote.\n"
         f"- Never write explanations, glosses, prompts, or rationales in French or "
