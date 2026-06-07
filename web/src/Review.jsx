@@ -3,6 +3,10 @@ import { getVideo, explainMark, setCardStatus, getTranslation } from './api'
 
 const key = (m) => `${m.span_start}-${m.span_end}`
 
+// Render a string with literal <br> (as the LLM/Anki uses) as real line breaks.
+const withBreaks = (s) =>
+  (s || '').split(/<br\s*\/?>/i).flatMap((part, i) => (i ? [<br key={i} />, part] : [part]))
+
 export default function Review({ videoId, onBack }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
@@ -152,8 +156,8 @@ export default function Review({ videoId, onBack }) {
   const card = (c) => (
     <div key={c.id} className={`card st-${c.status}`}>
       <div className="card-kind">{c.kind}</div>
-      <div className="card-front">{c.front}</div>
-      <div className="card-back">{c.back}</div>
+      <div className="card-front">{withBreaks(c.front)}</div>
+      <div className="card-back">{withBreaks(c.back)}</div>
       <div className="card-actions">
         <button className={c.status === 'accepted' ? 'on' : ''}
           onClick={() => cardStatus(c.id, 'accepted')}>accept</button>

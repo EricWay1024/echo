@@ -52,10 +52,15 @@ Return JSON with keys:
 - lang: the language code you wrote the explanation in.
 - explanation: 1-3 sentences — give the lemma, the role of the inflected form \
 here, and the collocation/usage in this context.
-- cards: 1-3 ATOMIC Anki suggestions (one idea each). Prefer a cloze built from \
-the REAL clause using Anki syntax {{c1::target}} on the front and the answer + a \
-short gloss on the back. Prefer collocations over bare words. kind ∈ \
-cloze|vocab|grammar|usage. Each card has just `kind`, `front`, and `back`.
+- cards: 1-3 ATOMIC Anki suggestions (one idea each); kind ∈ \
+cloze|vocab|grammar|usage. Each card has just `kind`, `front`, and `back`. Prefer \
+collocations over bare words.
+  - cloze: `front` = the REAL French clause with the target blanked via \
+{{c1::target}}, THEN "<br>" and the clause's translation (in the required \
+language) as a hint — so the learner recalls the French from the meaning, not a \
+bare blank; `back` = a short gloss of the answer.
+  - vocab/grammar/usage: `front` = a prompt or question (in the required \
+language, quoting French where needed); `back` = the answer with a brief gloss.
 
 Output ONLY a JSON object with these keys. No prose, no markdown, no code fences."""
 
