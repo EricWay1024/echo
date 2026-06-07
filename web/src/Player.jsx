@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { getVideo, runPipeline } from './api'
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5]
+const clamp = (lo, hi, x) => Math.max(lo, Math.min(hi, x))
 
 // Rightmost index with starts[i] <= tMs; -1 if before the first.
 function findTok(starts, tMs) {
@@ -58,7 +59,7 @@ export default function Player({ videoId }) {
   const transcriptRef = useRef(null)
   const rafRef = useRef(0)
   const lastTokRef = useRef(-1)
-  const selSegRef = useRef(0)
+  const curSegRef = useRef(-1) // segment under the playhead (follows playback)
   const loopRef = useRef(false)
   const viewRef = useRef(null)
 
@@ -66,13 +67,15 @@ export default function Player({ videoId }) {
   const view = useMemo(() => {
     if (!data) return null
     const starts = []
+    const tokSeg = [] // gi -> seg_idx (for playback-following highlight)
     let gi = 0
     if (data.render && data.render.length) {
-      const segments = data.render.map((seg) => ({
+      const segments = data.render.map((seg, si) => ({
         ...seg,
         tokens: seg.tokens.map((t) => {
           const tok = { ...t, gi }
           starts[gi] = t.start_ms
+          tokSeg[gi] = si
           gi += 1
           return tok
         }),
@@ -81,7 +84,7 @@ export default function Player({ videoId }) {
         start_ms: s.start_ms,
         end_ms: s.end_ms,
       }))
-      return { segments, raw: null, starts, segMeta }
+      return { segments, raw: null, starts, tokSeg, segMeta }
     }
     const raw = data.words.map((w) => {
       const tok = { text: w.text, gi, start_ms: w.start_ms }
@@ -89,20 +92,19 @@ export default function Player({ videoId }) {
       gi += 1
       return tok
     })
-    return { segments: null, raw, starts, segMeta: null }
+    return { segments: null, raw, starts, tokSeg: null, segMeta: null }
   }, [data])
 
   viewRef.current = view
   loopRef.current = loopOn
   const pipelined = !!view?.segments
 
-  // Load transcript for this video.
   useEffect(() => {
     let alive = true
     setData(null)
     setError(null)
     lastTokRef.current = -1
-    selSegRef.current = 0
+    curSegRef.current = -1
     getVideo(videoId)
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(String(e.message || e)))
@@ -112,7 +114,6 @@ export default function Player({ videoId }) {
     }
   }, [videoId])
 
-  // Apply playback rate (pitch preserved).
   useEffect(() => {
     const a = audioRef.current
     if (a) {
@@ -121,28 +122,51 @@ export default function Player({ videoId }) {
     }
   }, [rate, data])
 
-  // Highlight first segment once the segmented view is ready.
+  // Highlight the first segment once the segmented view is ready.
   useEffect(() => {
-    if (pipelined) selectSeg(0, { seek: false })
+    if (pipelined) gotoSeg(0, { seek: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelined])
 
+  // Move the current-segment highlight (the clause under the playhead) and keep
+  // it vertically centered.
+  function setCurSeg(i) {
+    if (i === curSegRef.current) return
+    curSegRef.current = i
+    const c = transcriptRef.current
+    if (!c) return
+    const prev = c.querySelector('.segment.cur')
+    if (prev) prev.classList.remove('cur')
+    const el = c.querySelector(`[data-seg="${i}"]`)
+    if (el) {
+      el.classList.add('cur')
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+  }
+
   function setActiveTok(idx) {
     const c = transcriptRef.current
-    if (!c || idx === lastTokRef.current) return
-    const prev = lastTokRef.current
-    if (prev >= 0) {
-      const p = c.querySelector(`[data-tok="${prev}"]`)
-      if (p) p.classList.remove('active')
-    }
-    if (idx >= 0) {
-      const el = c.querySelector(`[data-tok="${idx}"]`)
-      if (el) {
-        el.classList.add('active')
-        el.scrollIntoView({ block: 'nearest' })
+    if (!c) return
+    if (idx !== lastTokRef.current) {
+      const prev = lastTokRef.current
+      if (prev >= 0) {
+        const p = c.querySelector(`[data-tok="${prev}"]`)
+        if (p) p.classList.remove('active')
       }
+      if (idx >= 0) {
+        const el = c.querySelector(`[data-tok="${idx}"]`)
+        if (el) {
+          el.classList.add('active')
+          // In segmented mode the clause-level center-scroll handles visibility;
+          // only scroll per-word in raw (un-pipelined) mode.
+          if (!viewRef.current?.tokSeg) el.scrollIntoView({ block: 'nearest' })
+        }
+      }
+      lastTokRef.current = idx
     }
-    lastTokRef.current = idx
+    // Follow the playhead's segment (token scroll already handles visibility).
+    const v = viewRef.current
+    if (idx >= 0 && v?.tokSeg) setCurSeg(v.tokSeg[idx])
   }
 
   function syncHighlight() {
@@ -155,12 +179,17 @@ export default function Player({ videoId }) {
     const a = audioRef.current
     const v = viewRef.current
     if (a && v) {
-      const t = a.currentTime * 1000
-      setActiveTok(findTok(v.starts, t))
+      let t = a.currentTime * 1000
+      // Loop guard BEFORE highlight so we re-seek before the playhead crosses
+      // into the next clause (otherwise the highlight flickers forward).
       if (loopRef.current && v.segMeta) {
-        const seg = v.segMeta[selSegRef.current]
-        if (seg && t >= seg.end_ms) a.currentTime = seg.start_ms / 1000
+        const seg = v.segMeta[curSegRef.current]
+        if (seg && t >= seg.end_ms) {
+          a.currentTime = seg.start_ms / 1000
+          t = seg.start_ms
+        }
       }
+      setActiveTok(findTok(v.starts, t))
     }
     rafRef.current = requestAnimationFrame(tick)
   }
@@ -173,21 +202,11 @@ export default function Player({ videoId }) {
     syncHighlight()
   }
 
-  function selectSeg(i, { seek = true, play = false } = {}) {
+  function gotoSeg(i, { seek = true, play = false } = {}) {
     const v = viewRef.current
     if (!v?.segMeta) return
-    i = Math.max(0, Math.min(v.segMeta.length - 1, i))
-    selSegRef.current = i
-    const c = transcriptRef.current
-    if (c) {
-      const prev = c.querySelector('.segment.sel')
-      if (prev) prev.classList.remove('sel')
-      const el = c.querySelector(`[data-seg="${i}"]`)
-      if (el) {
-        el.classList.add('sel')
-        el.scrollIntoView({ block: 'nearest' })
-      }
-    }
+    i = clamp(0, v.segMeta.length - 1, i)
+    setCurSeg(i)
     const a = audioRef.current
     if (seek && a) {
       a.currentTime = v.segMeta[i].start_ms / 1000
@@ -202,12 +221,11 @@ export default function Player({ videoId }) {
     if (!span || !a || !v) return
     const gi = Number(span.dataset.tok)
     const segEl = span.closest('[data-seg]')
-    if (segEl) selectSeg(Number(segEl.dataset.seg), { seek: false })
+    if (segEl) setCurSeg(Number(segEl.dataset.seg)) // so loop targets this clause
     a.currentTime = v.starts[gi] / 1000
     a.play()
   }
 
-  // Keyboard shortcuts.
   useEffect(() => {
     function onKey(e) {
       if (/^(input|textarea|select)$/i.test(e.target.tagName)) return
@@ -223,12 +241,12 @@ export default function Player({ videoId }) {
       } else if (pipelined) {
         if (e.code === 'ArrowRight') {
           e.preventDefault()
-          selectSeg(selSegRef.current + 1, { play: !a.paused })
+          gotoSeg(curSegRef.current + 1, { play: !a.paused })
         } else if (e.code === 'ArrowLeft') {
           e.preventDefault()
-          selectSeg(selSegRef.current - 1, { play: !a.paused })
+          gotoSeg(curSegRef.current - 1, { play: !a.paused })
         } else if (e.code === 'KeyR') {
-          selectSeg(selSegRef.current, { seek: true, play: true })
+          gotoSeg(curSegRef.current, { seek: true, play: true })
         } else if (e.code === 'KeyL') {
           setLoopOn((l) => !l)
         }
