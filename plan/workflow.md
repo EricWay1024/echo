@@ -26,10 +26,15 @@ the UI imposes. Nothing meaning-related is ambient.
 - **Haiku** (cheap) for gist; language configurable, default 中文 (faster to read),
   EN available.
 
-## Marking → explanation + card suggestions (the core loop)
-- Select text → popover: **🔊 pron / ❓ meaning + optional note → confirm**.
-- A **❓ meaning** mark immediately fires one **Sonnet** call that returns, for the
-  selected span in its clause context (+ user profile + the note):
+## Marking is instant; explanations are batched on a Review page
+Marking must not break shadowing flow, so it does **no LLM work** — select text →
+🔊/❓ + optional note → confirm just records it (fast). After shadowing, open the
+**Review page**, which **batch-generates explanations + cards for all ❓ marks**
+(concurrency-limited, with progress), then lets you curate and export. (A single
+inline ~13s Sonnet call per mark was too disruptive — revised 2026-06-07.)
+
+Each ❓ mark, when explained on the Review page, yields one **Sonnet** result for
+the span in its clause context (+ user profile + the note):
   - **explanation**: lemma + the inflected form's role + the collocation, routed
     by language (EN for cognates/faux-amis/grammar metalanguage, 中文 for direct
     glosses), calibrated to B2 (skip basics; collocations, register, idioms).
@@ -56,8 +61,11 @@ the UI imposes. Nothing meaning-related is ambient.
 3. Translation **on demand per clause** (click), hidden by default — Haiku.
 4. Export `.apkg` (audio + cloze).
 5. Repeat: auto-pause at clause end + Space to resume. *(done)*
-6. **Single unified flow** (no two-pass modes); marking yields explanation +
-   card suggestions immediately.
+6. **Single unified flow** (no two-pass modes).
+7. **Marking is instant (no LLM); explanations + cards are batch-generated on a
+   dedicated Review page** after shadowing — inline per-mark LLM latency (~13s)
+   broke flow. Translation latency is kept on purpose: the beat of friction nudges
+   active comprehension before revealing.
 
 ## Roadmap
 - **Slice 3 — Pronunciation** (IPA, marks, step). ✅

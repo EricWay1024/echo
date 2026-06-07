@@ -311,6 +311,33 @@ a.ctl { text-decoration: none; display: inline-flex; }
 }
 .knownbtn:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ---- review page ---- */
+.ctl.review { border-color: var(--accent); color: var(--accent); }
+.review { padding-bottom: 80px; }
+.review-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 57px;
+  background: var(--bg);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  z-index: 9;
+}
+.review-bar .spacer { flex: 1; }
+.review-h { font-size: 0.95rem; margin: 22px 0 8px; }
+.review-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: var(--card);
+}
+.review-span { font-family: Georgia, serif; font-size: 1.05rem; margin-bottom: 6px; }
+.review-note { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+
 /* ---- marks ---- */
 .w.mp { text-decoration: underline dotted var(--accent); text-underline-offset: 4px; }
 .w.mm { text-decoration: underline wavy #b91c1c; text-underline-offset: 4px; }
