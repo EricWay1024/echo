@@ -18,6 +18,9 @@ def test_word_ipa_lexique():
     assert phon.word_ipa(" Dollar.") == "dolaʁ"
 
 
-def test_word_ipa_oov_without_espeak_is_none():
-    # A non-word: not in Lexique; espeak absent -> graceful None.
+def test_word_ipa_oov_degrades_gracefully(monkeypatch):
+    # With espeak unavailable, an OOV word returns None (not a crash); a Lexique
+    # word still resolves. (Simulate espeak-absent so the test is deterministic.)
+    monkeypatch.setattr(phon, "_phonemize", lambda text: None)
     assert phon.word_ipa("zzqxwk") is None
+    assert phon.word_ipa("vacille") == "vasij"

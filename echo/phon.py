@@ -69,6 +69,9 @@ def _phonemize(text: str) -> str | None:
         out = phonemize(
             text, language="fr-fr", backend="espeak",
             strip=True, with_stress=False, njobs=1,
+            # Foreign words make espeak switch language and emit "(en)…(fr)"
+            # markers; drop the flags, keep the phonemes.
+            language_switch="remove-flags",
         ).strip()
         return out or None
     except Exception:
