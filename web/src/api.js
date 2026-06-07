@@ -17,3 +17,6 @@ export const addVideo = (url) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
   }).then(asJson)
+
+export const runPipeline = (id) =>
+  fetch(`/api/videos/${id}/pipeline`, { method: 'POST' }).then(asJson)

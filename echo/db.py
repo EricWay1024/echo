@@ -52,3 +52,53 @@ def store_video(conn, result, *, status: str = "fetched") -> None:
         [(result.id, w.idx, w.text, w.start_ms, w.dur_ms) for w in result.words],
     )
     conn.commit()
+
+
+def load_words(conn, video_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT idx, text, start_ms, dur_ms FROM words "
+        "WHERE video_id = ? ORDER BY idx",
+        (video_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def store_pipeline(conn, video_id: str, edits: list, segments: list) -> None:
+    """Persist LLM rectify+segment output. Replaces any prior pipeline result.
+
+    edits: list of {op, span:[s,e], text?}. segments: list of {span:[s,e], kind?}.
+    """
+    conn.execute("DELETE FROM edits WHERE video_id = ?", (video_id,))
+    conn.execute("DELETE FROM segments WHERE video_id = ?", (video_id,))
+    conn.executemany(
+        "INSERT INTO edits (video_id, span_start, span_end, op, text) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [(video_id, e["span"][0], e["span"][1], e["op"], e.get("text"))
+         for e in edits],
+    )
+    conn.executemany(
+        "INSERT INTO segments (video_id, seg_idx, span_start, span_end, kind) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [(video_id, i, s["span"][0], s["span"][1], s.get("kind"))
+         for i, s in enumerate(segments)],
+    )
+    conn.execute("UPDATE videos SET status = 'pipelined' WHERE id = ?", (video_id,))
+    conn.commit()
+
+
+def load_edits(conn, video_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT span_start, span_end, op, text FROM edits "
+        "WHERE video_id = ? ORDER BY span_start",
+        (video_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def load_segments(conn, video_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT seg_idx, span_start, span_end, kind FROM segments "
+        "WHERE video_id = ? ORDER BY seg_idx",
+        (video_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]

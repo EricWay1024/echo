@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db
+from . import config, db, render
 
 cfg = config.get()
 
@@ -60,17 +60,17 @@ def get_video(video_id: str) -> dict:
         ).fetchone()
         if video is None:
             raise HTTPException(404, "video not found")
-        words = conn.execute(
-            "SELECT idx, text, start_ms, dur_ms FROM words "
-            "WHERE video_id = ? ORDER BY idx",
-            (video_id,),
-        ).fetchall()
-        # edits/segments/marks land in later slices.
+        words = db.load_words(conn, video_id)
+        edits = db.load_edits(conn, video_id)
+        segments = db.load_segments(conn, video_id)
+        rendered = render.render(words, edits, segments) if segments else []
+        # marks land in Slice 3.
         return {
             "video": dict(video),
-            "words": [dict(w) for w in words],
-            "edits": [],
-            "segments": [],
+            "words": words,
+            "edits": edits,
+            "segments": segments,
+            "render": rendered,
             "marks": [],
         }
     finally:
@@ -91,6 +91,17 @@ def add_video(payload: dict) -> dict:
     finally:
         conn.close()
     return {"id": result.id, "title": result.title, "words": len(result.words)}
+
+
+@app.post("/api/videos/{video_id}/pipeline")
+def run_pipeline(video_id: str, force: bool = False) -> dict:
+    from . import pipeline  # local import keeps the SDK off the hot import path
+
+    conn = db.connect(cfg.db_path)
+    try:
+        return pipeline.run(conn, cfg, video_id, force=force)
+    finally:
+        conn.close()
 
 
 @app.get("/audio/{video_id}.opus")

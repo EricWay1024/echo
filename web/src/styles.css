@@ -125,3 +125,60 @@ body {
   background: var(--active-bg);
   box-shadow: 0 0 0 2px var(--active-bg);
 }
+
+/* ---- transport controls ---- */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+.ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 0.85rem;
+  color: var(--fg);
+  cursor: pointer;
+}
+.ctl select {
+  border: none;
+  background: none;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.ctl.on { border-color: var(--accent); color: var(--accent); }
+.ctl.rectify {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.ctl:disabled { opacity: 0.55; cursor: default; }
+
+/* ---- segmented transcript ---- */
+.transcript.segmented { padding-top: 20px; }
+.segment {
+  padding: 6px 12px;
+  margin: 2px 0;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+}
+.segment.sel {
+  border-left-color: var(--accent);
+  background: #fff8ec;
+}
+
+/* ---- hide / reveal ---- */
+.transcript.hidden .w {
+  color: transparent;
+  text-shadow: 0 0 9px rgba(40, 35, 28, 0.55);
+}
+.transcript.hidden .w.active {
+  color: var(--fg);
+  text-shadow: none;
+}

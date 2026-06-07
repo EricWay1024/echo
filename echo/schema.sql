@@ -1,5 +1,5 @@
--- écho schema. Slice 1 covers `videos` and `words` only.
--- Later slices add: edits, segments, marks, explanations, lexemes.
+-- écho schema. Slice 1: videos, words. Slice 2: edits, segments.
+-- Later slices add: marks, explanations, lexemes.
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -24,4 +24,24 @@ CREATE TABLE IF NOT EXISTS words (
     start_ms INTEGER NOT NULL,
     dur_ms   INTEGER NOT NULL,
     PRIMARY KEY (video_id, idx)
+);
+
+-- LLM rectification ops over word indices (replace | delete). Non-overlapping.
+CREATE TABLE IF NOT EXISTS edits (
+    video_id   TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    span_start INTEGER NOT NULL,
+    span_end   INTEGER NOT NULL,
+    op         TEXT    NOT NULL,      -- replace | delete
+    text       TEXT,                  -- replacement (replace only)
+    PRIMARY KEY (video_id, span_start, span_end)
+);
+
+-- Clause segmentation; tiles [0, N-1] in order (no gaps/overlaps).
+CREATE TABLE IF NOT EXISTS segments (
+    video_id   TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    seg_idx    INTEGER NOT NULL,
+    span_start INTEGER NOT NULL,
+    span_end   INTEGER NOT NULL,
+    kind       TEXT,
+    PRIMARY KEY (video_id, seg_idx)
 );

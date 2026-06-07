@@ -56,6 +56,7 @@ export default function Library({ videos, onOpen, onChanged }) {
               <span className="vmeta">
                 {v.channel}
                 {v.duration_ms ? ` · ${fmtDur(v.duration_ms)}` : ''}
+                {v.status === 'pipelined' ? ' · ✓ rectified' : ''}
               </span>
             </li>
           ))}
