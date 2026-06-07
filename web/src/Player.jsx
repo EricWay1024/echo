@@ -517,7 +517,7 @@ export default function Player({ videoId, onReview }) {
               {pipelining ? 'rectifying…' : 'rectify & segment (LLM)'}
             </button>
           )}
-          <button className="ctl review" onClick={onReview}>
+          <button className="ctl reviewbtn" onClick={onReview}>
             review &amp; cards ({meaningCount}) →
           </button>
         </div>

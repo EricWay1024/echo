@@ -11,7 +11,7 @@ import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -82,18 +82,22 @@ def get_video(video_id: str) -> dict:
 
 
 @app.post("/api/videos/{video_id}/marks", status_code=201)
-def add_mark(video_id: str, payload: dict) -> dict:
+def add_mark(video_id: str, payload: dict, background_tasks: BackgroundTasks) -> dict:
     span = (payload or {}).get("span")
     kind = (payload or {}).get("kind")
     if not (isinstance(span, list) and len(span) == 2) or kind not in ("pron", "meaning"):
         raise HTTPException(400, "need span [start,end] and kind in {pron,meaning}")
+    s, e = int(span[0]), int(span[1])
     conn = db.connect(cfg.db_path)
     try:
-        db.add_mark(conn, video_id, int(span[0]), int(span[1]), kind,
+        db.add_mark(conn, video_id, s, e, kind,
                     (payload or {}).get("status", "unknown"),
                     note=(payload or {}).get("note"))
     finally:
         conn.close()
+    # Pre-generate the explanation in the background so the Review page is ready.
+    if kind == "meaning":
+        background_tasks.add_task(_bg_explain, video_id, s, e)
     return {"ok": True}
 
 
@@ -185,20 +189,10 @@ def get_translation(video_id: str, seg_idx: int, lang: str = "zh") -> dict:
     return {"text": text, "cached": False}
 
 
-@app.post("/api/videos/{video_id}/explain")
-def explain(video_id: str, payload: dict) -> dict:
-    span = (payload or {}).get("span")
-    if not (isinstance(span, list) and len(span) == 2):
-        raise HTTPException(400, "need span [start, end]")
-    s, e = int(span[0]), int(span[1])
-
+def _run_explain(video_id: str, s: int, e: int) -> None:
+    """Generate + store one explanation (+ lexeme + suggested cards). Blocking."""
     conn = db.connect(cfg.db_path)
     try:
-        cached = db.get_explanation(conn, video_id, s, e)
-        if cached and not (payload or {}).get("force"):
-            cards = [c for c in db.load_cards(conn, video_id)
-                     if c["span_start"] == s and c["span_end"] == e]
-            return {"explanation": cached, "cards": cards, "cached": True}
         words = db.load_words(conn, video_id)
         rendered = render.render(words, db.load_edits(conn, video_id),
                                  db.load_segments(conn, video_id))
@@ -218,16 +212,57 @@ def explain(video_id: str, payload: dict) -> dict:
                              data["pos"], data["explanation"])
         db.upsert_lexeme(conn, data["lemma"], "fr", "learning")
         db.replace_suggested_cards(conn, video_id, s, e, data["cards"])
+    finally:
+        conn.close()
+
+
+def _bg_explain(video_id: str, s: int, e: int) -> None:
+    """Background pre-generation: skip if already done or the mark was removed."""
+    conn = db.connect(cfg.db_path)
+    try:
+        if db.get_explanation(conn, video_id, s, e):
+            return
+        still_marked = any(m["span_start"] == s and m["span_end"] == e
+                           and m["kind"] == "meaning"
+                           for m in db.load_marks(conn, video_id))
+    finally:
+        conn.close()
+    if not still_marked:
+        return
+    try:
+        _run_explain(video_id, s, e)
+    except Exception:
+        pass  # background best-effort; the Review page can retry on demand
+
+
+@app.post("/api/videos/{video_id}/explain")
+def explain(video_id: str, payload: dict) -> dict:
+    span = (payload or {}).get("span")
+    if not (isinstance(span, list) and len(span) == 2):
+        raise HTTPException(400, "need span [start, end]")
+    s, e = int(span[0]), int(span[1])
+
+    conn = db.connect(cfg.db_path)
+    try:
+        cached = db.get_explanation(conn, video_id, s, e)
+        if not cached or (payload or {}).get("force"):
+            cached = None
+        if cached:
+            cards = [c for c in db.load_cards(conn, video_id)
+                     if c["span_start"] == s and c["span_end"] == e]
+            return {"explanation": cached, "cards": cards, "cached": True}
+    finally:
+        conn.close()
+
+    _run_explain(video_id, s, e)
+    conn = db.connect(cfg.db_path)
+    try:
+        explanation = db.get_explanation(conn, video_id, s, e)
         cards = [c for c in db.load_cards(conn, video_id)
                  if c["span_start"] == s and c["span_end"] == e]
     finally:
         conn.close()
-    return {
-        "explanation": {"lang": data["lang"], "lemma": data["lemma"],
-                        "pos": data["pos"], "body": data["explanation"]},
-        "cards": cards,
-        "cached": False,
-    }
+    return {"explanation": explanation, "cards": cards, "cached": False}
 
 
 @app.post("/api/videos", status_code=201)

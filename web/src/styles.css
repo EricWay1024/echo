@@ -156,6 +156,7 @@ body {
   font-size: 0.85rem;
   color: var(--fg);
   cursor: pointer;
+  white-space: nowrap;
 }
 .ctl select {
   border: none;
@@ -312,7 +313,7 @@ a.ctl { text-decoration: none; display: inline-flex; }
 .knownbtn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---- review page ---- */
-.ctl.review { border-color: var(--accent); color: var(--accent); }
+.ctl.reviewbtn { border-color: var(--accent); color: var(--accent); }
 .review { padding-bottom: 80px; }
 .review-bar {
   display: flex;
