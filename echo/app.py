@@ -14,7 +14,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db, render
+from . import config, db, phon, render
+
+_ipa_cache: dict[str, dict] = {}  # video_id -> {tokens, segments} (process-level)
 
 cfg = config.get()
 
@@ -64,17 +66,76 @@ def get_video(video_id: str) -> dict:
         edits = db.load_edits(conn, video_id)
         segments = db.load_segments(conn, video_id)
         rendered = render.render(words, edits, segments) if segments else []
-        # marks land in Slice 3.
         return {
             "video": dict(video),
             "words": words,
             "edits": edits,
             "segments": segments,
             "render": rendered,
-            "marks": [],
+            "marks": db.load_marks(conn, video_id),
         }
     finally:
         conn.close()
+
+
+@app.post("/api/videos/{video_id}/marks", status_code=201)
+def add_mark(video_id: str, payload: dict) -> dict:
+    span = (payload or {}).get("span")
+    kind = (payload or {}).get("kind")
+    if not (isinstance(span, list) and len(span) == 2) or kind not in ("pron", "meaning"):
+        raise HTTPException(400, "need span [start,end] and kind in {pron,meaning}")
+    conn = db.connect(cfg.db_path)
+    try:
+        db.add_mark(conn, video_id, int(span[0]), int(span[1]), kind,
+                    (payload or {}).get("status", "unknown"))
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@app.delete("/api/videos/{video_id}/marks/{span_start}/{span_end}/{kind}")
+def delete_mark(video_id: str, span_start: int, span_end: int, kind: str) -> dict:
+    conn = db.connect(cfg.db_path)
+    try:
+        db.delete_mark(conn, video_id, span_start, span_end, kind)
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@app.get("/api/videos/{video_id}/ipa")
+def get_ipa(video_id: str) -> dict:
+    """IPA aligned to the rendered token stream (tokens[gi]) + per segment.
+    Word-level from Lexique (offline); segment-level needs espeak (else null)."""
+    if video_id in _ipa_cache:
+        return _ipa_cache[video_id]
+    conn = db.connect(cfg.db_path)
+    try:
+        if conn.execute("SELECT 1 FROM videos WHERE id = ?", (video_id,)).fetchone() is None:
+            raise HTTPException(404, "video not found")
+        words = db.load_words(conn, video_id)
+        segments = db.load_segments(conn, video_id)
+        edits = db.load_edits(conn, video_id)
+    finally:
+        conn.close()
+
+    token_texts: list[str] = []
+    seg_ipa: list[str | None] = []
+    if segments:
+        for seg in render.render(words, edits, segments):
+            for t in seg["tokens"]:
+                token_texts.append(t["text"])
+            seg_ipa.append(phon.clause_ipa("".join(t["text"] for t in seg["tokens"])))
+    else:
+        token_texts = [w["text"] for w in words]
+
+    tok_ipa = [
+        (phon.clause_ipa(t) if " " in t.strip() else phon.word_ipa(t))
+        for t in token_texts
+    ]
+    result = {"tokens": tok_ipa, "segments": seg_ipa}
+    _ipa_cache[video_id] = result
+    return result
 
 
 @app.post("/api/videos", status_code=201)
@@ -99,7 +160,9 @@ def run_pipeline(video_id: str, force: bool = False) -> dict:
 
     conn = db.connect(cfg.db_path)
     try:
-        return pipeline.run(conn, cfg, video_id, force=force)
+        result = pipeline.run(conn, cfg, video_id, force=force)
+        _ipa_cache.pop(video_id, None)  # render changed -> IPA alignment changed
+        return result
     finally:
         conn.close()
 

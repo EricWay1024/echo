@@ -182,3 +182,67 @@ body {
   color: var(--fg);
   text-shadow: none;
 }
+
+/* ---- mode toggle ---- */
+.headrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.modes { display: flex; gap: 4px; }
+.mode {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--fg);
+}
+.mode.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ---- marks ---- */
+.w.mp { text-decoration: underline dotted var(--accent); text-underline-offset: 4px; }
+.w.mm { text-decoration: underline wavy #b91c1c; text-underline-offset: 4px; }
+
+/* ---- IPA popover ---- */
+.ipapop {
+  position: fixed;
+  z-index: 50;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+  padding: 10px 14px 10px 12px;
+  min-width: 150px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.ipapop-x {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.ipapop-word { font-weight: 600; font-size: 0.95rem; }
+.ipapop-ipa {
+  font-size: 1.15rem;
+  color: var(--accent);
+  font-family: Georgia, serif;
+  margin: 2px 0;
+}
+.ipapop-clause { font-size: 0.78rem; color: var(--muted); }
+.ipapop-marks { display: flex; gap: 6px; margin-top: 8px; }
+.ipapop-marks button {
+  font-size: 0.78rem;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+.ipapop-marks button.on { border-color: var(--accent); color: var(--accent); background: #fff8ec; }

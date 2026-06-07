@@ -1,5 +1,5 @@
 -- écho schema. Slice 1: videos, words. Slice 2: edits, segments.
--- Later slices add: marks, explanations, lexemes.
+-- Slice 3: marks. Later: explanations, lexemes.
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -44,4 +44,15 @@ CREATE TABLE IF NOT EXISTS segments (
     span_end   INTEGER NOT NULL,
     kind       TEXT,
     PRIMARY KEY (video_id, seg_idx)
+);
+
+-- User marks over word spans. kind: pron (🔊) | meaning (❓).
+CREATE TABLE IF NOT EXISTS marks (
+    video_id   TEXT    NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    span_start INTEGER NOT NULL,
+    span_end   INTEGER NOT NULL,
+    kind       TEXT    NOT NULL,   -- pron | meaning
+    status     TEXT,               -- unknown | learning | known
+    created_at TEXT,
+    PRIMARY KEY (video_id, span_start, span_end, kind)
 );

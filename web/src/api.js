@@ -20,3 +20,17 @@ export const addVideo = (url) =>
 
 export const runPipeline = (id) =>
   fetch(`/api/videos/${id}/pipeline`, { method: 'POST' }).then(asJson)
+
+export const getIpa = (id) => fetch(`/api/videos/${id}/ipa`).then(asJson)
+
+export const addMark = (id, span, kind) =>
+  fetch(`/api/videos/${id}/marks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ span, kind }),
+  }).then(asJson)
+
+export const deleteMark = (id, span, kind) =>
+  fetch(`/api/videos/${id}/marks/${span[0]}/${span[1]}/${kind}`, {
+    method: 'DELETE',
+  }).then(asJson)

@@ -102,3 +102,36 @@ def load_segments(conn, video_id: str) -> list[dict]:
         (video_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def load_marks(conn, video_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT span_start, span_end, kind, status, created_at FROM marks "
+        "WHERE video_id = ? ORDER BY span_start, kind",
+        (video_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_mark(conn, video_id: str, span_start: int, span_end: int, kind: str,
+             status: str = "unknown") -> None:
+    import datetime as _dt
+
+    conn.execute(
+        "INSERT OR REPLACE INTO marks "
+        "(video_id, span_start, span_end, kind, status, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (video_id, span_start, span_end, kind, status,
+         _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")),
+    )
+    conn.commit()
+
+
+def delete_mark(conn, video_id: str, span_start: int, span_end: int,
+                kind: str) -> None:
+    conn.execute(
+        "DELETE FROM marks WHERE video_id = ? AND span_start = ? "
+        "AND span_end = ? AND kind = ?",
+        (video_id, span_start, span_end, kind),
+    )
+    conn.commit()

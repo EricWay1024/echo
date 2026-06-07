@@ -1,10 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { getVideo, runPipeline } from './api'
+import { getVideo, runPipeline, getIpa, addMark, deleteMark } from './api'
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5]
 const clamp = (lo, hi, x) => Math.max(lo, Math.min(hi, x))
 
-// Rightmost index with starts[i] <= tMs; -1 if before the first.
 function findTok(starts, tMs) {
   let lo = 0
   let hi = starts.length - 1
@@ -21,15 +20,14 @@ function findTok(starts, tMs) {
   return ans
 }
 
-// Pure render of the token stream — memoized so playback/control state changes
-// don't re-render thousands of spans. Tokens carry a global index (data-tok)
-// for the karaoke highlighter; segments carry data-seg for selection/looping.
-const Transcript = memo(function Transcript({ view }) {
+const Transcript = memo(function Transcript({ view, markPron, markMeaning }) {
+  const cls = (gi) =>
+    'w' + (markPron.has(gi) ? ' mp' : '') + (markMeaning.has(gi) ? ' mm' : '')
   if (view.segments) {
     return view.segments.map((seg) => (
       <div className="segment" data-seg={seg.seg_idx} key={seg.seg_idx}>
         {seg.tokens.map((t) => (
-          <span className="w" data-tok={t.gi} key={t.gi}>
+          <span className={cls(t.gi)} data-tok={t.gi} key={t.gi}>
             {t.text}
           </span>
         ))}
@@ -39,7 +37,7 @@ const Transcript = memo(function Transcript({ view }) {
   return (
     <div className="rawwrap">
       {view.raw.map((t) => (
-        <span className="w" data-tok={t.gi} key={t.gi}>
+        <span className={cls(t.gi)} data-tok={t.gi} key={t.gi}>
           {t.text}
         </span>
       ))}
@@ -53,61 +51,97 @@ export default function Player({ videoId }) {
   const [pipelining, setPipelining] = useState(false)
   const [reveal, setReveal] = useState(true)
   const [loopOn, setLoopOn] = useState(false)
+  const [stepOn, setStepOn] = useState(false)
   const [rate, setRate] = useState(1)
+  const [mode, setMode] = useState('shadow') // shadow | study (study: Slice 4)
+  const [ipa, setIpa] = useState(null)
+  const [marks, setMarks] = useState([])
+  const [popover, setPopover] = useState(null) // {gi, segIdx, top, left}
 
   const audioRef = useRef(null)
   const transcriptRef = useRef(null)
   const rafRef = useRef(0)
   const lastTokRef = useRef(-1)
-  const curSegRef = useRef(-1) // segment under the playhead (follows playback)
+  const curSegRef = useRef(-1)
   const loopRef = useRef(false)
+  const stepRef = useRef(false)
+  const stepPrevSegRef = useRef(-1)
   const viewRef = useRef(null)
+  const marksRef = useRef([])
 
-  // Build the token stream (segmented when pipelined, else raw words).
   const view = useMemo(() => {
     if (!data) return null
     const starts = []
-    const tokSeg = [] // gi -> seg_idx (for playback-following highlight)
+    const tokSeg = []
+    const tokByGi = []
     let gi = 0
+    const push = (tok, si) => {
+      starts[gi] = tok.start_ms
+      tokSeg[gi] = si
+      tokByGi[gi] = tok
+      tok.gi = gi
+      gi += 1
+    }
     if (data.render && data.render.length) {
       const segments = data.render.map((seg, si) => ({
         ...seg,
         tokens: seg.tokens.map((t) => {
-          const tok = { ...t, gi }
-          starts[gi] = t.start_ms
-          tokSeg[gi] = si
-          gi += 1
+          const tok = { ...t }
+          push(tok, si)
           return tok
         }),
       }))
-      const segMeta = data.render.map((s) => ({
-        start_ms: s.start_ms,
-        end_ms: s.end_ms,
-      }))
-      return { segments, raw: null, starts, tokSeg, segMeta }
+      const segMeta = data.render.map((s) => ({ start_ms: s.start_ms, end_ms: s.end_ms }))
+      return { segments, raw: null, starts, tokSeg, tokByGi, segMeta }
     }
     const raw = data.words.map((w) => {
-      const tok = { text: w.text, gi, start_ms: w.start_ms }
-      starts[gi] = w.start_ms
-      gi += 1
+      const tok = { text: w.text, start_ms: w.start_ms, src_start: w.idx, src_end: w.idx }
+      push(tok, -1)
       return tok
     })
-    return { segments: null, raw, starts, tokSeg: null, segMeta: null }
+    return { segments: null, raw, starts, tokSeg: null, tokByGi, segMeta: null }
   }, [data])
 
   viewRef.current = view
   loopRef.current = loopOn
+  stepRef.current = stepOn
+  marksRef.current = marks
   const pipelined = !!view?.segments
+
+  // gi sets covered by a mark of each kind (overlap of token span vs mark span).
+  const { markPron, markMeaning } = useMemo(() => {
+    const mp = new Set()
+    const mm = new Set()
+    if (view) {
+      for (const m of marks) {
+        const set = m.kind === 'pron' ? mp : mm
+        for (const t of view.tokByGi) {
+          if (t.src_start <= m.span_end && m.span_start <= t.src_end) set.add(t.gi)
+        }
+      }
+    }
+    return { markPron: mp, markMeaning: mm }
+  }, [view, marks])
 
   useEffect(() => {
     let alive = true
     setData(null)
     setError(null)
+    setIpa(null)
+    setMarks([])
+    setPopover(null)
     lastTokRef.current = -1
     curSegRef.current = -1
     getVideo(videoId)
-      .then((d) => alive && setData(d))
+      .then((d) => {
+        if (!alive) return
+        setData(d)
+        setMarks(d.marks || [])
+      })
       .catch((e) => alive && setError(String(e.message || e)))
+    getIpa(videoId)
+      .then((d) => alive && setIpa(d))
+      .catch(() => {})
     return () => {
       alive = false
       cancelAnimationFrame(rafRef.current)
@@ -122,14 +156,11 @@ export default function Player({ videoId }) {
     }
   }, [rate, data])
 
-  // Highlight the first segment once the segmented view is ready.
   useEffect(() => {
     if (pipelined) gotoSeg(0, { seek: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelined])
 
-  // Move the current-segment highlight (the clause under the playhead) and keep
-  // it vertically centered.
   function setCurSeg(i) {
     if (i === curSegRef.current) return
     curSegRef.current = i
@@ -157,14 +188,11 @@ export default function Player({ videoId }) {
         const el = c.querySelector(`[data-tok="${idx}"]`)
         if (el) {
           el.classList.add('active')
-          // In segmented mode the clause-level center-scroll handles visibility;
-          // only scroll per-word in raw (un-pipelined) mode.
           if (!viewRef.current?.tokSeg) el.scrollIntoView({ block: 'nearest' })
         }
       }
       lastTokRef.current = idx
     }
-    // Follow the playhead's segment (token scroll already handles visibility).
     const v = viewRef.current
     if (idx >= 0 && v?.tokSeg) setCurSeg(v.tokSeg[idx])
   }
@@ -173,6 +201,7 @@ export default function Player({ videoId }) {
     const a = audioRef.current
     const v = viewRef.current
     if (a && v) setActiveTok(findTok(v.starts, a.currentTime * 1000))
+    stepPrevSegRef.current = curSegRef.current // a seek isn't a clause boundary
   }
 
   function tick() {
@@ -180,8 +209,6 @@ export default function Player({ videoId }) {
     const v = viewRef.current
     if (a && v) {
       let t = a.currentTime * 1000
-      // Loop guard BEFORE highlight so we re-seek before the playhead crosses
-      // into the next clause (otherwise the highlight flickers forward).
       if (loopRef.current && v.segMeta) {
         const seg = v.segMeta[curSegRef.current]
         if (seg && t >= seg.end_ms) {
@@ -190,10 +217,18 @@ export default function Player({ videoId }) {
         }
       }
       setActiveTok(findTok(v.starts, t))
+      // Step mode: pause when we cross into a new clause (heard the previous one).
+      if (stepRef.current && !loopRef.current && v.segMeta) {
+        if (curSegRef.current !== stepPrevSegRef.current) {
+          stepPrevSegRef.current = curSegRef.current
+          a.pause()
+        }
+      }
     }
     rafRef.current = requestAnimationFrame(tick)
   }
   function startLoop() {
+    stepPrevSegRef.current = curSegRef.current
     cancelAnimationFrame(rafRef.current)
     rafRef.current = requestAnimationFrame(tick)
   }
@@ -207,10 +242,33 @@ export default function Player({ videoId }) {
     if (!v?.segMeta) return
     i = clamp(0, v.segMeta.length - 1, i)
     setCurSeg(i)
+    stepPrevSegRef.current = i
     const a = audioRef.current
     if (seek && a) {
       a.currentTime = v.segMeta[i].start_ms / 1000
       if (play) a.play()
+    }
+  }
+
+  function toggleMark(tok, kind) {
+    if (!tok) return
+    const span = [tok.src_start, tok.src_end]
+    const exists = marksRef.current.some(
+      (m) => m.kind === kind && m.span_start === span[0] && m.span_end === span[1],
+    )
+    if (exists) {
+      deleteMark(videoId, span, kind).catch(() => {})
+      setMarks((ms) =>
+        ms.filter(
+          (m) => !(m.kind === kind && m.span_start === span[0] && m.span_end === span[1]),
+        ),
+      )
+    } else {
+      addMark(videoId, span, kind).catch(() => {})
+      setMarks((ms) => [
+        ...ms,
+        { span_start: span[0], span_end: span[1], kind, status: 'unknown' },
+      ])
     }
   }
 
@@ -221,21 +279,34 @@ export default function Player({ videoId }) {
     if (!span || !a || !v) return
     const gi = Number(span.dataset.tok)
     const segEl = span.closest('[data-seg]')
-    if (segEl) setCurSeg(Number(segEl.dataset.seg)) // so loop targets this clause
+    if (segEl) setCurSeg(Number(segEl.dataset.seg))
     a.currentTime = v.starts[gi] / 1000
     a.play()
+    if (mode === 'shadow') {
+      const r = span.getBoundingClientRect()
+      setPopover({ gi, segIdx: v.tokSeg ? v.tokSeg[gi] : -1, top: r.bottom + 4, left: r.left })
+    }
   }
 
   useEffect(() => {
     function onKey(e) {
       if (/^(input|textarea|select)$/i.test(e.target.tagName)) return
       const a = audioRef.current
+      const v = viewRef.current
       if (!a) return
-      if (e.code === 'Space') {
+      if (e.code === 'Escape') {
+        setPopover(null)
+      } else if (e.code === 'Space') {
         e.preventDefault()
         a.paused ? a.play() : a.pause()
       } else if (e.code === 'KeyH') {
         setReveal((r) => !r)
+      } else if (e.code === 'KeyS') {
+        setStepOn((s) => !s)
+      } else if (e.code === 'KeyP' && v && lastTokRef.current >= 0) {
+        toggleMark(v.tokByGi[lastTokRef.current], 'pron')
+      } else if (e.code === 'KeyM' && v && lastTokRef.current >= 0) {
+        toggleMark(v.tokByGi[lastTokRef.current], 'meaning')
       } else if (/^Digit[1-5]$/.test(e.code)) {
         setRate(SPEEDS[Number(e.code.slice(5)) - 1])
       } else if (pipelined) {
@@ -254,14 +325,18 @@ export default function Player({ videoId }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [pipelined])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelined, mode])
 
   async function rectify() {
     setPipelining(true)
     setError(null)
     try {
       await runPipeline(videoId)
-      setData(await getVideo(videoId))
+      const d = await getVideo(videoId)
+      setData(d)
+      setMarks(d.marks || [])
+      getIpa(videoId).then(setIpa).catch(() => {})
     } catch (e) {
       setError(String(e.message || e))
     } finally {
@@ -272,10 +347,35 @@ export default function Player({ videoId }) {
   if (error) return <p className="error">{error}</p>
   if (!data) return <p className="muted">loading transcript…</p>
 
+  const popTok = popover && view ? view.tokByGi[popover.gi] : null
+  const popSpan = popTok ? [popTok.src_start, popTok.src_end] : null
+  const has = (kind) =>
+    popSpan &&
+    marks.some(
+      (m) => m.kind === kind && m.span_start === popSpan[0] && m.span_end === popSpan[1],
+    )
+
   return (
     <main className="player">
       <div className="playerhead">
-        <h2 className="ptitle">{data.video.title}</h2>
+        <div className="headrow">
+          <h2 className="ptitle">{data.video.title}</h2>
+          <div className="modes">
+            <button
+              className={`mode${mode === 'shadow' ? ' on' : ''}`}
+              onClick={() => setMode('shadow')}
+            >
+              shadow
+            </button>
+            <button
+              className={`mode${mode === 'study' ? ' on' : ''}`}
+              onClick={() => setMode('study')}
+              title="Translations & explanations land in Slice 4"
+            >
+              study
+            </button>
+          </div>
+        </div>
         <audio
           ref={audioRef}
           className="audio"
@@ -301,14 +401,24 @@ export default function Player({ videoId }) {
           <button className="ctl" onClick={() => setReveal((r) => !r)}>
             {reveal ? 'hide text (H)' : 'reveal text (H)'}
           </button>
-          {pipelined ? (
-            <button
-              className={`ctl${loopOn ? ' on' : ''}`}
-              onClick={() => setLoopOn((l) => !l)}
-            >
-              loop segment (L){loopOn ? ' ✓' : ''}
-            </button>
-          ) : (
+          {pipelined && (
+            <>
+              <button
+                className={`ctl${stepOn ? ' on' : ''}`}
+                onClick={() => setStepOn((s) => !s)}
+                title="Pause at each clause; Space to continue"
+              >
+                step (S){stepOn ? ' ✓' : ''}
+              </button>
+              <button
+                className={`ctl${loopOn ? ' on' : ''}`}
+                onClick={() => setLoopOn((l) => !l)}
+              >
+                loop (L){loopOn ? ' ✓' : ''}
+              </button>
+            </>
+          )}
+          {!pipelined && (
             <button className="ctl rectify" onClick={rectify} disabled={pipelining}>
               {pipelining ? 'rectifying…' : 'rectify & segment (LLM)'}
             </button>
@@ -316,8 +426,8 @@ export default function Player({ videoId }) {
         </div>
         <p className="hint">
           {pipelined
-            ? 'click a word to jump · ←/→ segment · R replay · L loop · 1–5 speed · space play'
-            : 'click a word to jump · space play/pause · rectify to unlock clause loops'}
+            ? 'click word: hear + IPA · P 🔊 / M ❓ mark · ←/→ clause · R replay · S step · L loop · 1–5 speed'
+            : 'click word to jump · P/M mark · space play · rectify to unlock clauses'}
         </p>
       </div>
 
@@ -329,8 +439,41 @@ export default function Player({ videoId }) {
         lang="fr"
         onClick={onClickTranscript}
       >
-        <Transcript view={view} />
+        <Transcript view={view} markPron={markPron} markMeaning={markMeaning} />
       </div>
+
+      {popover && popTok && (
+        <div
+          className="ipapop"
+          style={{ top: popover.top, left: popover.left }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button className="ipapop-x" onClick={() => setPopover(null)}>
+            ✕
+          </button>
+          <div className="ipapop-word">{popTok.text.trim()}</div>
+          <div className="ipapop-ipa">
+            {ipa?.tokens?.[popover.gi] ? `/${ipa.tokens[popover.gi]}/` : '— no IPA —'}
+          </div>
+          {popover.segIdx >= 0 && ipa?.segments?.[popover.segIdx] && (
+            <div className="ipapop-clause">clause: /{ipa.segments[popover.segIdx]}/</div>
+          )}
+          <div className="ipapop-marks">
+            <button
+              className={has('pron') ? 'on' : ''}
+              onClick={() => toggleMark(popTok, 'pron')}
+            >
+              🔊 pron
+            </button>
+            <button
+              className={has('meaning') ? 'on' : ''}
+              onClick={() => toggleMark(popTok, 'meaning')}
+            >
+              ❓ meaning
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
