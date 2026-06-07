@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getVideo, explainMark, setCardStatus } from './api'
 
 const key = (m) => `${m.span_start}-${m.span_end}`
@@ -10,6 +10,8 @@ export default function Review({ videoId, onBack }) {
   const [cards, setCards] = useState([])
   const [pending, setPending] = useState(() => new Set())
   const [busy, setBusy] = useState(false)
+  const audioRef = useRef(null)
+  const stopAtRef = useRef(null)
 
   useEffect(() => {
     let alive = true
@@ -30,6 +32,45 @@ export default function Review({ videoId, onBack }) {
   if (!data) return <p className="muted">loading…</p>
 
   const spanText = (s, e) => data.words.slice(s, e + 1).map((w) => w.text).join('').trim()
+
+  function playClause(seg) {
+    const a = audioRef.current
+    if (!a) return
+    a.currentTime = seg.start_ms / 1000
+    stopAtRef.current = seg.end_ms / 1000
+    a.play()
+  }
+
+  function onAudioTime() {
+    const a = audioRef.current
+    if (a && stopAtRef.current != null && a.currentTime >= stopAtRef.current) {
+      a.pause()
+      stopAtRef.current = null
+    }
+  }
+
+  // The clause the mark sits in, with the marked tokens highlighted.
+  const clause = (m) => {
+    const seg = (data.render || []).find(
+      (s) => s.span_start <= m.span_start && m.span_start <= s.span_end,
+    )
+    if (!seg) return null
+    return (
+      <div className="review-clause" lang="fr">
+        <button className="clauseplay" title="play this clause" onClick={() => playClause(seg)}>
+          ▶
+        </button>
+        {seg.tokens.map((t, i) => (
+          <span
+            key={i}
+            className={t.src_start <= m.span_end && m.span_start <= t.src_end ? 'hl' : ''}
+          >
+            {t.text}
+          </span>
+        ))}
+      </div>
+    )
+  }
   const meaningMarks = (data.marks || []).filter((m) => m.kind === 'meaning')
   const pronMarks = (data.marks || []).filter((m) => m.kind === 'pron')
   const expFor = (m) =>
@@ -96,6 +137,12 @@ export default function Review({ videoId, onBack }) {
 
   return (
     <main className="review">
+      <audio
+        ref={audioRef}
+        src={`/audio/${videoId}.opus`}
+        preload="none"
+        onTimeUpdate={onAudioTime}
+      />
       <div className="review-bar">
         <button className="ctl" onClick={onBack}>← shadow</button>
         <button className="ctl rectify" onClick={generateAll} disabled={busy || todo.length === 0}>
@@ -124,6 +171,7 @@ export default function Review({ videoId, onBack }) {
                 «{spanText(m.span_start, m.span_end)}»
                 {m.note && <span className="review-note"> — {m.note}</span>}
               </div>
+              {clause(m)}
               {exp ? (
                 <>
                   <div className="explain-head">
@@ -152,6 +200,7 @@ export default function Review({ videoId, onBack }) {
                 «{spanText(m.span_start, m.span_end)}»
                 {m.note && <span className="review-note"> — {m.note}</span>}
               </div>
+              {clause(m)}
             </div>
           ))}
         </section>

@@ -170,7 +170,6 @@ export default function Player({ videoId, onReview }) {
   function setCurSeg(i) {
     if (i === curSegRef.current) return
     curSegRef.current = i
-    setPopover(null)
     const c = transcriptRef.current
     if (!c) return
     const prev = c.querySelector('.segment.cur')
@@ -316,8 +315,8 @@ export default function Player({ videoId, onReview }) {
     a.play()
     const r = span.getBoundingClientRect()
     const cont = transcriptRef.current.getBoundingClientRect()
-    const POPW = 180
-    const POPH = 84
+    const POPW = 210
+    const POPH = 210
     const GAP = 12
     let left = cont.right + GAP
     let top = r.top
@@ -327,7 +326,7 @@ export default function Player({ videoId, onReview }) {
       top = r.bottom + 4
     }
     top = clamp(8, window.innerHeight - POPH - 8, top)
-    setPopover({ type: 'ipa', gi, top, left })
+    setPopover({ type: 'ipa', gi, kind: 'meaning', note: '', top, left })
   }
 
   function onMouseUpTranscript() {
@@ -357,10 +356,8 @@ export default function Player({ videoId, onReview }) {
     setPopover({ type: 'select', span, giStart: a, giEnd: b, kind: 'meaning', note: '', top, left })
   }
 
-  function confirmMark() {
-    if (popover?.type !== 'select') return
-    const { span, kind, note } = popover
-    const n = note.trim() || null
+  function commitMark(span, kind, note) {
+    const n = (note || '').trim() || null
     addMark(videoId, span, kind, n).catch(() => {})
     setMarks((ms) => [
       ...ms.filter(
@@ -368,7 +365,19 @@ export default function Player({ videoId, onReview }) {
       ),
       { span_start: span[0], span_end: span[1], kind, status: 'unknown', note: n },
     ])
+  }
+
+  function confirmMark() {
+    if (popover?.type !== 'select') return
+    commitMark(popover.span, popover.kind, popover.note)
     window.getSelection()?.removeAllRanges()
+    setPopover(null)
+  }
+
+  function addMarkFromIpa() {
+    if (popover?.type !== 'ipa' || !view) return
+    const t = view.tokByGi[popover.gi]
+    commitMark([t.src_start, t.src_end], popover.kind, popover.note)
     setPopover(null)
   }
 
@@ -553,6 +562,36 @@ export default function Player({ videoId, onReview }) {
           <div className="ipapop-word">{popTok.text.trim()}</div>
           <div className="ipapop-ipa">
             {ipa?.tokens?.[popover.gi] ? `/${ipa.tokens[popover.gi]}/` : '— no IPA —'}
+          </div>
+          <div className="markpop-kind">
+            <button
+              className={popover.kind === 'pron' ? 'on' : ''}
+              onClick={() => setPopover({ ...popover, kind: 'pron' })}
+            >
+              🔊 pron
+            </button>
+            <button
+              className={popover.kind === 'meaning' ? 'on' : ''}
+              onClick={() => setPopover({ ...popover, kind: 'meaning' })}
+            >
+              ❓ meaning
+            </button>
+          </div>
+          <input
+            className="markpop-note"
+            placeholder="note (optional)…"
+            value={popover.note}
+            onChange={(e) => setPopover({ ...popover, note: e.target.value })}
+            onKeyDown={(e) => {
+              e.stopPropagation()
+              if (e.key === 'Enter') addMarkFromIpa()
+              else if (e.key === 'Escape') setPopover(null)
+            }}
+          />
+          <div className="markpop-actions">
+            <button className="primary" onClick={addMarkFromIpa}>
+              add mark
+            </button>
           </div>
         </div>
       )}

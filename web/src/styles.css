@@ -338,6 +338,24 @@ a.ctl { text-decoration: none; display: inline-flex; }
 }
 .review-span { font-family: Georgia, serif; font-size: 1.05rem; margin-bottom: 6px; }
 .review-note { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+.review-clause {
+  font-family: Georgia, serif;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 4px 0 10px;
+}
+.review-clause .hl { color: var(--fg); font-weight: 700; background: var(--sel-bg); border-radius: 3px; }
+.clauseplay {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.75rem;
+  margin-right: 6px;
+  padding: 0;
+  vertical-align: middle;
+}
 
 /* ---- marks ---- */
 .w.mp { text-decoration: underline dotted var(--accent); text-underline-offset: 4px; }
@@ -352,10 +370,11 @@ a.ctl { text-decoration: none; display: inline-flex; }
   border-radius: 10px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
   padding: 10px 14px 10px 12px;
-  min-width: 140px;
-  max-width: 180px;
+  min-width: 180px;
+  max-width: 210px;
   font-family: ui-sans-serif, system-ui, sans-serif;
 }
+.ipapop .markpop-kind { margin-top: 10px; }
 .ipapop-x {
   position: absolute;
   top: 4px;
