@@ -4,7 +4,9 @@ Goal (from `initial.md`): **URL in → audio + json3 cached → words table → 
 
 Locked decisions: backend Python+FastAPI w/ `uv`; frontend **Vite + React**; fixture obtained by **installing yt-dlp + deno + POT provider and capturing one real French video** (then committed and used for all dev/test — never hit live YouTube again in dev).
 
-> **Status (2026-06-07):** Backend complete & verified — T0–T5 ✅. Fixture = `CE3foG8FRz4` (Les Echos, "Le yuan peut-il détrôner le dollar ?", 2064 words). Only **T6 (frontend)** remains. Secrets moved to gitignored `.env`.
+> **Status (2026-06-07):** Slice 1 COMPLETE — T0–T6 ✅. Fixture = `CE3foG8FRz4` (Les Echos, "Le yuan peut-il détrôner le dollar ?", 2064 words). Backend serves SPA + API + ranged audio; React player has rAF karaoke highlight + click-to-seek + spacebar. Secrets in gitignored `.env`.
+>
+> **Verified by me:** parser (6 tests), all API routes, audio Range 206, SPA build + served, route coexistence. **NOT yet verified (needs a browser / live net):** interactive karaoke/click-seek visuals; live `POST /api/videos` fetch on a fresh URL.
 
 ## Repo layout (target)
 

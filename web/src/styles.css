@@ -1,0 +1,127 @@
+:root {
+  --bg: #faf8f3;
+  --fg: #221f1a;
+  --muted: #8c857a;
+  --line: #e7e1d5;
+  --card: #ffffff;
+  --accent: #b45309;
+  --active-bg: #ffe7b0;
+  --hover-bg: #efe9dc;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.app {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 0 20px 80px;
+}
+
+/* ---- top bar ---- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 16px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+}
+.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0;
+}
+
+.error { color: #b91c1c; }
+.muted { color: var(--muted); }
+
+/* ---- library ---- */
+.library { padding-top: 24px; }
+.add { display: flex; gap: 8px; margin-bottom: 24px; }
+.add input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: var(--card);
+}
+.add button {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.add button:disabled { opacity: 0.5; cursor: default; }
+
+.videolist { list-style: none; margin: 0; padding: 0; }
+.videolist li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.videolist li:hover { border-color: var(--accent); }
+.vtitle { font-weight: 600; }
+.vmeta { color: var(--muted); font-size: 0.85rem; }
+
+/* ---- player ---- */
+.playerhead {
+  position: sticky;
+  top: 57px;
+  z-index: 9;
+  background: var(--bg);
+  padding: 18px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ptitle { margin: 0 0 12px; font-size: 1.25rem; }
+.audio { width: 100%; height: 38px; }
+.hint { margin: 10px 0 0; color: var(--muted); font-size: 0.8rem; }
+
+.transcript {
+  padding: 28px 0 40px;
+  font-size: 1.3rem;
+  line-height: 2.1;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.w {
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+.w:hover { background: var(--hover-bg); }
+.w.active {
+  background: var(--active-bg);
+  box-shadow: 0 0 0 2px var(--active-bg);
+}
