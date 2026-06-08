@@ -99,6 +99,42 @@ window.
 which AI model to use, your preferred explanation language (`explain_lang`, default
 中文), and where to store data. Your API key lives in `.env`, never in the config.
 
+## Make it your own (forking)
+
+The language assumptions live in just a handful of places, so retargeting écho is
+realistic. There are two levels of change.
+
+### Adjust the level or the language you read in — *config only*
+
+Edit `config.toml`, no code:
+
+- `[user]` — your `known` languages and your `target` (language + **level**). The
+  level (e.g. `B2`) is fed to the AI, so explanations get pitched to it.
+- `[llm].explain_lang` — the language explanations are written in (`zh`, `en`, …).
+
+For a very different level (say A1) you may also want to soften the "skip the
+basics, focus on collocations/idioms" wording in `EXPLAIN_SYSTEM_BASE`
+(`echo/study.py`).
+
+### Change the language being learned — *a little code*
+
+To retarget the **source/audio** language — e.g. French → Spanish — touch these
+(all small edits):
+
+| What to change | Where |
+|---|---|
+| The caption language pulled from YouTube | `echo/fetcher.py` (`sub_lang`, default `"fr-orig"` → e.g. `"es"`); `echo/seed.py` if you make a new fixture |
+| Pronunciation / IPA | `echo/phon.py` — the vendored **Lexique is French-only**; for another language, drop the lexicon and let everything fall through to **espeak** (set `language="es"` etc. in `_phonemize`; espeak-ng covers many languages), or vendor an equivalent word→IPA list |
+| Prompts that mention "French" | `echo/pipeline.py` (the rectify system prompt) and `echo/study.py` (`EXPLAIN_SYSTEM_BASE`, `_explain_system`, `translate_clause`) |
+| The vocabulary language code (`"fr"`) | `echo/app.py` (lexeme writes) and `echo/db.py` (`load_known_lemmas` default) |
+| The language(s) you can translate/explain *into* | `_LANG_NAMES` + `translate_clause` in `echo/study.py`, and the toggle in `web/src/Player.jsx` (plus the default in `web/src/Review.jsx`) |
+
+**The clean way:** most of those French literals (`"fr"`, `"fr-orig"`, `"fr-fr"`)
+could instead read from `config.target.lang` — centralizing the source language in
+`config.toml` is a good first refactor and makes écho properly multi-language.
+Everything else — json3 parsing, the op-based rectify/segment pipeline, timing,
+marks, cards, and spaced repetition — is already language-agnostic.
+
 ## Under the hood (for the curious)
 
 A Python + FastAPI backend, a React single-page app it serves itself, and SQLite
