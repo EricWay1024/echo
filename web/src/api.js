@@ -59,6 +59,15 @@ export const setCardStatus = (cardId, status) =>
     body: JSON.stringify({ status }),
   }).then(asJson)
 
+export const getReview = () => fetch('/api/review').then(asJson)
+
+export const reviewCard = (cardId, grade) =>
+  fetch(`/api/cards/${cardId}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grade }),
+  }).then(asJson)
+
 export const setLexeme = (lemma, lang, status) =>
   fetch('/api/lexemes', {
     method: 'POST',

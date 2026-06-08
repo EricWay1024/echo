@@ -53,7 +53,7 @@ const Transcript = memo(function Transcript({ view, markPron, markMeaning, trans
   )
 })
 
-export default function Player({ videoId, onReview }) {
+export default function Player({ videoId, startMs, onReview }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [pipelining, setPipelining] = useState(false)
@@ -80,6 +80,7 @@ export default function Player({ videoId, onReview }) {
   const marksRef = useRef([])
   const restoreRef = useRef(0) // resume position (ms) to seek once audio is ready
   const lastSaveRef = useRef(0)
+  const peekingRef = useRef(false) // opened at a timestamp from review — don't save
 
   const view = useMemo(() => {
     if (!data) return null
@@ -145,10 +146,11 @@ export default function Player({ videoId, onReview }) {
     lastTokRef.current = -1
     curSegRef.current = -1
     restoreRef.current = 0
+    peekingRef.current = startMs != null
     getVideo(videoId)
       .then((d) => {
         if (!alive) return
-        restoreRef.current = d.video.last_pos_ms || 0
+        restoreRef.current = startMs != null ? startMs : (d.video.last_pos_ms || 0)
         setData(d)
         setMarks(d.marks || [])
       })
@@ -158,10 +160,11 @@ export default function Player({ videoId, onReview }) {
       alive = false
       cancelAnimationFrame(rafRef.current)
       const a = audioRef.current
-      if (a && a.currentTime > 0) {
+      if (!peekingRef.current && a && a.currentTime > 0) {
         saveProgress(videoId, Math.round(a.currentTime * 1000)).catch(() => {})
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId])
 
   useEffect(() => {
@@ -192,7 +195,7 @@ export default function Player({ videoId, onReview }) {
   useEffect(() => {
     function onHide() {
       const a = audioRef.current
-      if (a && a.currentTime > 0 && navigator.sendBeacon) {
+      if (!peekingRef.current && a && a.currentTime > 0 && navigator.sendBeacon) {
         navigator.sendBeacon(
           `/api/videos/${videoId}/progress`,
           new Blob([JSON.stringify({ pos_ms: Math.round(a.currentTime * 1000) })],
@@ -249,7 +252,7 @@ export default function Player({ videoId, onReview }) {
 
   function persist() {
     const a = audioRef.current
-    if (a && a.currentTime > 0) {
+    if (!peekingRef.current && a && a.currentTime > 0) {
       lastSaveRef.current = Date.now()
       saveProgress(videoId, Math.round(a.currentTime * 1000)).catch(() => {})
     }

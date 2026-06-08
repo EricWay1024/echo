@@ -15,17 +15,24 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _ensure_columns(conn, table: str, cols: dict[str, str]) -> None:
+    have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    for name, decl in cols.items():
+        if name not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
 def init_db(db_path: Path) -> None:
     """Create tables if absent + apply lightweight column migrations. Idempotent."""
     conn = connect(db_path)
     try:
         conn.executescript(SCHEMA)
-        mcols = {r[1] for r in conn.execute("PRAGMA table_info(marks)")}
-        if "note" not in mcols:
-            conn.execute("ALTER TABLE marks ADD COLUMN note TEXT")
-        vcols = {r[1] for r in conn.execute("PRAGMA table_info(videos)")}
-        if "last_pos_ms" not in vcols:
-            conn.execute("ALTER TABLE videos ADD COLUMN last_pos_ms INTEGER")
+        _ensure_columns(conn, "marks", {"note": "TEXT"})
+        _ensure_columns(conn, "videos", {"last_pos_ms": "INTEGER"})
+        _ensure_columns(conn, "cards", {
+            "due": "TEXT", "interval": "INTEGER", "ease": "REAL",
+            "reps": "INTEGER", "lapses": "INTEGER", "last_reviewed": "TEXT",
+        })
         conn.commit()
     finally:
         conn.close()
@@ -230,6 +237,39 @@ def replace_suggested_cards(conn, video_id: str, span_start: int, span_end: int,
 
 def set_card_status(conn, card_id: int, status: str) -> None:
     conn.execute("UPDATE cards SET status = ? WHERE id = ?", (status, card_id))
+    conn.commit()
+
+
+def get_card(conn, card_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def due_cards(conn, today: str) -> list[dict]:
+    """Accepted cards due for review (never-scheduled cards come first)."""
+    rows = conn.execute(
+        "SELECT * FROM cards WHERE status = 'accepted' AND (due IS NULL OR due <= ?) "
+        "ORDER BY (due IS NULL) DESC, due ASC, id ASC",
+        (today,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_due(conn, today: str) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM cards WHERE status = 'accepted' "
+        "AND (due IS NULL OR due <= ?)",
+        (today,),
+    ).fetchone()["n"]
+
+
+def update_card_schedule(conn, card_id: int, sched: dict) -> None:
+    conn.execute(
+        "UPDATE cards SET due = ?, interval = ?, ease = ?, reps = ?, lapses = ?, "
+        "last_reviewed = ? WHERE id = ?",
+        (sched["due"], sched["interval"], sched["ease"], sched["reps"],
+         sched["lapses"], sched["last_reviewed"], card_id),
+    )
     conn.commit()
 
 

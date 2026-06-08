@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db, phon, render, study
+from . import config, db, phon, render, srs, study
 
 _ipa_cache: dict[str, dict] = {}  # video_id -> {tokens, segments} (process-level)
 
@@ -350,6 +350,65 @@ def set_card_status(card_id: int, payload: dict) -> dict:
     finally:
         conn.close()
     return {"ok": True}
+
+
+@app.get("/api/review")
+def review_queue() -> dict:
+    import datetime as _dt
+
+    today = _dt.date.today().isoformat()
+    conn = db.connect(cfg.db_path)
+    try:
+        cards = db.due_cards(conn, today)
+        rcache: dict = {}
+        out = []
+        for c in cards:
+            vid = c["video_id"]
+            if vid not in rcache:
+                vrow = conn.execute("SELECT title FROM videos WHERE id = ?",
+                                    (vid,)).fetchone()
+                rendered = render.render(db.load_words(conn, vid),
+                                         db.load_edits(conn, vid),
+                                         db.load_segments(conn, vid))
+                exps = {(e["span_start"], e["span_end"]): e
+                        for e in db.load_explanations(conn, vid)}
+                rcache[vid] = (vrow["title"] if vrow else vid, rendered, exps)
+            title, rendered, exps = rcache[vid]
+            seg = next((s for s in rendered
+                        if s["span_start"] <= c["span_start"] <= s["span_end"]), None)
+            out.append({
+                "id": c["id"], "video_id": vid, "video_title": title,
+                "kind": c["kind"], "front": c["front"], "back": c["back"],
+                "span": [c["span_start"], c["span_end"]],
+                "clause_start_ms": seg["start_ms"] if seg else None,
+                "clause_end_ms": seg["end_ms"] if seg else None,
+                "explanation": exps.get((c["span_start"], c["span_end"])),
+            })
+        return {"due": out, "count": len(out)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/cards/{card_id}/review")
+def review_card(card_id: int, payload: dict) -> dict:
+    grade = (payload or {}).get("grade")
+    if grade not in ("again", "good", "easy"):
+        raise HTTPException(400, "grade must be again|good|easy")
+    conn = db.connect(cfg.db_path)
+    try:
+        card = db.get_card(conn, card_id)
+        if card is None:
+            raise HTTPException(404, "card not found")
+        sched = srs.schedule(card, grade)
+        db.update_card_schedule(conn, card_id, sched)
+        if sched["graduated"]:
+            exp = db.get_explanation(conn, card["video_id"],
+                                     card["span_start"], card["span_end"])
+            if exp and exp.get("lemma"):
+                db.upsert_lexeme(conn, exp["lemma"], "fr", "known")
+        return {"ok": True, "due": sched["due"], "interval": sched["interval"]}
+    finally:
+        conn.close()
 
 
 @app.get("/audio/{video_id}.opus")

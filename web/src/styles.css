@@ -350,6 +350,56 @@ a.ctl { text-decoration: none; display: inline-flex; }
 }
 .review-span { font-family: Georgia, serif; font-size: 1.05rem; margin-bottom: 6px; }
 .review-note { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+
+/* ---- spaced-repetition review (Revise) ---- */
+.revise { max-width: 700px; margin: 0 auto; }
+.revise-bar { display: flex; align-items: center; gap: 8px; padding: 12px 0; }
+.revise-bar .spacer { flex: 1; }
+.revise-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+  background: var(--card);
+  margin-top: 12px;
+  text-align: center;
+}
+.revise-kind {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.revise-front {
+  font-family: Georgia, serif;
+  font-size: 1.4rem;
+  line-height: 1.7;
+  margin-bottom: 16px;
+}
+.revise-back { font-size: 1.05rem; margin: 16px 0; line-height: 1.6; }
+.revise-exp {
+  text-align: left;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+.revise-open { display: inline-block; margin: 14px 0; }
+.revise-actions { margin-top: 16px; }
+.revise-grades { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+.grade {
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 0.95rem;
+  background: var(--card);
+}
+.grade.again { color: #b91c1c; border-color: #e7c3c3; }
+.grade.good { color: #15803d; border-color: #bfe3cd; }
+.grade.easy { color: #1d4ed8; border-color: #c5d3f5; }
+.grade:hover { filter: brightness(0.97); }
+.revise-done { text-align: center; padding: 60px 0; color: var(--muted); }
+.revise-done p { font-size: 1.1rem; margin-bottom: 16px; }
 .review-clause {
   font-family: Georgia, serif;
   color: var(--muted);

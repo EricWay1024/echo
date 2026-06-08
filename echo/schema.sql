@@ -92,7 +92,14 @@ CREATE TABLE IF NOT EXISTS cards (
     back       TEXT,
     rationale  TEXT,
     status     TEXT,               -- suggested | accepted | rejected
-    created_at TEXT
+    created_at TEXT,
+    -- SRS (Slice 6): scheduling for accepted cards
+    due           TEXT,            -- ISO date (YYYY-MM-DD); null = new
+    interval      INTEGER,         -- days
+    ease          REAL,
+    reps          INTEGER,
+    lapses        INTEGER,
+    last_reviewed TEXT
 );
 
 -- Cross-video vocabulary state.
