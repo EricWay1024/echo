@@ -1,145 +1,118 @@
 # écho
 
-**A local-first workbench for shadowing and learning a language from YouTube audio** — built for French (B2+), single-user, bring-your-own-Anthropic-key.
+**Learn a language by shadowing real YouTube audio — with a transcript you can actually trust.**
 
-> YouTube auto-captions carry word-level timestamps but are full of ASR errors and
-> arbitrary line breaks. Existing tools either keep the noise or, when they clean
-> it up, lose the timing that makes shadowing possible. écho uses an LLM to
-> **rectify and re-segment** the transcript **without ever detaching it from
-> word-level timing** — then builds shadowing, pronunciation, marking,
-> explanation, spaced-repetition review, and Anki export on top.
+écho is a small app you run on your own computer. Paste a YouTube link and it gives
+you the audio plus a clean, perfectly-timed transcript to shadow, look things up in,
+and turn into flashcards you'll actually remember. It's built for **French (B2+)**
+and brings its own AI smarts through your own Anthropic API key.
 
-No accounts, no hosting, no video — just audio + an honest, timed transcript.
+> **Heads-up:** this is a personal, local-first tool — you run it on your machine,
+> there's no website to sign up for, and the AI features use your own API key (a few
+> cents per video). It's currently tuned for French.
 
-## The core idea
+## Why écho?
 
-The LLM **never returns rewritten text**. It returns **operations over word
-indices** (`replace` / `delete`) plus **clause segments**. The per-word timing is
-immutable, so every corrected word still knows exactly when it's spoken.
-Click-to-seek, karaoke highlight, and clause loops keep working on the cleaned-up
-text — no fragile re-alignment.
+If you've tried shadowing from YouTube, you know the problem: auto-captions are
+timed to the audio but full of mistakes and chopped into awkward chunks. Clean them
+up and you usually *lose the timing* — so karaoke highlighting and sentence looping
+stop working.
 
-```
-YouTube ──yt-dlp──▶  words  (immutable: text + per-word ms timing)
-                       │
-                  LLM  ▼  ops over indices + clause segments
-                  edits + segments ──render──▶  timed tokens
-                       │                              │
-                  SQLite cache       Player (shadow) · Review (cards) · Revise (SRS)
-```
+écho cleans up the captions with AI **without ever losing the timing.** Every word —
+even the corrected ones — stays locked to the exact moment it's spoken. So you get a
+trustworthy transcript *and* word-perfect playback: tap any word to jump there, loop
+a sentence until it's yours, and watch the highlight track right along.
 
-## Features
+## What you can do
 
-- 🎧 **Fetch & cache** a video's audio + auto-captions once; fully offline after.
-- ✍️ **Rectify + segment** (one LLM pass): fixes ASR errors and proper nouns using
-  the video's title/channel/description, splits into natural clauses — timing kept.
-- 🗣️ **Shadowing**: word-level karaoke highlight, click-to-seek, clause **A–B
-  loop**, **step mode** (auto-pause each clause; Space to repeat), speed control
-  (pitch preserved), hide/reveal.
-- 🔤 **IPA on click**: French word-level from [Lexique](http://www.lexique.org)
-  (offline), clause-level (with liaison) via espeak.
-- 🖍️ **Marking**: flag spans as 🔊 *pronunciation* or ❓ *meaning*, with notes.
-- 🌐 **On-demand translation** per clause (中文 / English) — revealed only when you
-  ask, so you attempt comprehension first. Cached.
-- 💡 **Explanations** of marked spans, in your chosen language (中文 by default),
-  calibrated to B2 (collocations, register, faux amis) — pre-generated in the
-  background so the review page is ready when you get there.
-- 🃏 **Anki export**: suggested cloze (with a translation hint) / vocab / grammar
-  cards, plus **audio cards** clipped from the real clause → `.apkg` (with media)
-  or `.tsv`.
-- 🔁 **Spaced-repetition review, in context**: review accepted cards inside the app
-  with the **clause audio as the prompt** and a one-tap jump back to the source
-  video — simple SM-2-lite scheduling. (Anki export stays for mobile/sync.)
-- ⏯️ **Resume**: remembers your last position per video and picks up where you left.
+**🗣️ Shadow.** Play with a word-by-word karaoke highlight. Click any word to jump to
+it. Loop a clause A–B until you nail it, or use **step mode** to pause after each
+sentence and repeat it back. Slow things down (pitch preserved), or hide the text
+and train your ears first.
 
-## How it works
+**🔤 Hear how it's said.** Click a word for its IPA pronunciation — with French
+liaison shown at the clause level. No more guessing how a conjugated form sounds.
 
-- **Backend** — Python + FastAPI on `localhost:7777`; SQLite (`app.db`) + an audio
-  cache directory. Frontend is built and served by the backend.
-- **Frontend** — Vite + React SPA (plain JS).
-- **LLM** — your Anthropic key. A strong model for rectify/explain, a cheap model
-  for bulk translation; **every result is cached and never re-asked.**
-- **Pronunciation** is **not** LLM-based — Lexique for word IPA, espeak for phrase
-  IPA. Audio is always ground truth.
+**🖍️ Mark as you go.** Select anything you're unsure of and flag it — 🔊 for
+pronunciation, ❓ for meaning — with an optional note. It's instant and never breaks
+your flow.
 
-## Requirements
+**🌐 Understand on demand.** Stuck on a sentence? Reveal its translation (中文 or
+English) with one click. It's hidden by default, so you attempt it yourself first.
 
-- Python 3.12 + [uv](https://docs.astral.sh/uv/)
-- Node 20+ (to build the SPA)
-- ffmpeg
-- An **Anthropic API key** (rectify / translate / explain — you pay per use)
-- For fetching from YouTube: **yt-dlp** + **Deno** (JS-challenge solving)
-- Optional: **espeak-ng** (clause-level IPA; word IPA works without it)
+**💡 Get explanations.** Everything you mark ❓ gets a focused, B2-level explanation
+(the dictionary form, how it's used here, collocations, false friends) — generated
+in the background while you shadow, so it's ready when you finish.
 
-## Setup
+**🃏 Build flashcards.** écho drafts Anki cards from your marks — cloze cards with a
+hint, plus vocab/grammar cards and **audio cards clipped from the real sentence**.
+Keep the ones you like and export to Anki (`.apkg` with audio, or `.tsv`).
+
+**🔁 …or review right here.** Skip the export and study in-app: a built-in
+spaced-repetition system plays the **original clause as the prompt** and lets you
+jump straight back to where the word appeared in the video — because a word is
+easiest to remember where you met it.
+
+**⏯️ Pick up where you left off.** écho remembers your place in every video.
+
+## Get started
+
+You'll need **Python 3.12** + [uv](https://docs.astral.sh/uv/), **Node 20+**,
+**ffmpeg**, and an **Anthropic API key**. (To import from YouTube you'll also want
+**yt-dlp** + **Deno**; for clause-level IPA, optionally **espeak-ng**.)
 
 ```bash
-# backend deps
+# 1. install
 uv sync
+npm install --prefix web && npm run build --prefix web
 
-# config + key (both gitignored)
+# 2. configure (both files stay out of git)
 cp config.toml.example config.toml
 printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > .env
 
-# build the SPA
-npm install --prefix web
-npm run build --prefix web
-
-# run
-uv run python -m echo            # → http://localhost:7777
+# 3. run
+uv run python -m echo        # then open http://localhost:7777
 ```
 
 System tools (Debian/Ubuntu):
 
 ```bash
-sudo apt-get install -y ffmpeg espeak-ng
-# live YouTube fetch:
-uv tool install yt-dlp
-curl -fsSL https://deno.land/install.sh | sh
+sudo apt-get install -y ffmpeg espeak-ng        # ffmpeg required, espeak optional
+uv tool install yt-dlp                          # ┐ to import
+curl -fsSL https://deno.land/install.sh | sh    # ┘ from YouTube
 ```
 
-For an app-like window: `chrome --app=http://localhost:7777`.
+Tip: `chrome --app=http://localhost:7777` opens it in a clean, browser-chrome-free
+window.
 
-## Usage
+## A typical session
 
-1. **Add** a YouTube URL in the library → it fetches and caches audio + captions.
-2. **Rectify & segment** the video (one LLM pass) to unlock clause-level features.
-3. **Shadow**: play with karaoke, loop or step through clauses, adjust speed, click
-   words for IPA. Mark 🔊/❓ spans as you go — instant; explanations bake in the
-   background.
-4. **Review & cards**: explanations + suggested Anki cards are already there; play
-   each clause, read its translation, curate cards (accept/reject), then **export**
-   `.apkg` (with audio) or `.tsv` and import into Anki.
-5. **Revise**: the *revise* button (top bar) runs spaced-repetition over your
-   accepted cards — hear the clause, recall, grade *Again/Good/Easy*, and jump to
-   the source video to see the word in context. (Reopen any video and it resumes
-   where you left off.)
+1. **Add a video** — paste a YouTube URL in the library.
+2. **Rectify & segment** — one click runs the AI cleanup; now you have clean, timed clauses.
+3. **Shadow** — loop, step, slow down, and mark the tricky bits.
+4. **Review** — read the translations, skim the explanations, keep the flashcards worth keeping.
+5. **Revise** — drill your due cards with spaced repetition, in context, any day.
 
 ## Configuration
 
-`config.toml` (gitignored — see `config.toml.example`): learner profile (known and
-target languages + levels), model IDs (`model`, `translate_model`), the explanation
-language (`explain_lang`, default `zh`), data directory, and port. The API key is
-read from the environment variable named by `api_key_env`
-(default `ANTHROPIC_API_KEY`) — keep it in `.env`, never in the committed config.
+`config.toml` holds your learner profile (the languages you know and your target),
+which AI model to use, your preferred explanation language (`explain_lang`, default
+中文), and where to store data. Your API key lives in `.env`, never in the config.
 
-## Project layout
+## Under the hood (for the curious)
 
-```
-echo/        FastAPI backend (app, db, fetcher, json3, pipeline, render, phon, study, srs, export)
-echo/data/   vendored Lexique pronunciation data
-web/         Vite + React SPA (built into web/dist, served by the backend)
-tests/       offline tests + the canonical fixture
-plan/        design philosophy (workflow.md) + build history
-CLAUDE.md    engineering guide for contributors/agents
-```
+A Python + FastAPI backend, a React single-page app it serves itself, and SQLite
+plus a local audio cache. The key trick: the AI returns *edits over word indices and
+clause boundaries* — never rewritten prose — so the original timing is never lost,
+and every AI result is cached so you only ever pay once. Want to hack on it? See
+[CLAUDE.md](CLAUDE.md) for the engineering guide and [`plan/`](plan/) for the design.
 
 ## Status & scope
 
-Personal, single-user, local-first. Built for **French**; the pipeline is largely
-language-agnostic but the prompts and IPA data assume French. Bring-your-own-key —
-budget roughly a few cents per video (rectify) and per explanation; translations
-are fractions of a cent. Cached, so you pay once.
+A personal, single-user tool, currently focused on **French**. The pipeline is
+mostly language-agnostic, but the prompts and pronunciation data assume French.
+Costs: roughly a few cents per video to rectify and per explanation; translations
+are fractions of a cent — and it's all cached, so you never pay twice.
 
 ## Acknowledgements
 
