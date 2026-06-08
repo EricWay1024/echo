@@ -7,7 +7,7 @@
 > it up, lose the timing that makes shadowing possible. écho uses an LLM to
 > **rectify and re-segment** the transcript **without ever detaching it from
 > word-level timing** — then builds shadowing, pronunciation, marking,
-> explanation, and Anki export on top.
+> explanation, spaced-repetition review, and Anki export on top.
 
 No accounts, no hosting, no video — just audio + an honest, timed transcript.
 
@@ -25,7 +25,7 @@ YouTube ──yt-dlp──▶  words  (immutable: text + per-word ms timing)
                   LLM  ▼  ops over indices + clause segments
                   edits + segments ──render──▶  timed tokens
                        │                              │
-                  SQLite cache              Player (shadow) · Review (cards)
+                  SQLite cache       Player (shadow) · Review (cards) · Revise (SRS)
 ```
 
 ## Features
@@ -41,10 +41,16 @@ YouTube ──yt-dlp──▶  words  (immutable: text + per-word ms timing)
 - 🖍️ **Marking**: flag spans as 🔊 *pronunciation* or ❓ *meaning*, with notes.
 - 🌐 **On-demand translation** per clause (中文 / English) — revealed only when you
   ask, so you attempt comprehension first. Cached.
-- 💡 **Explanations** of marked spans, routed EN/中文 and calibrated to B2
-  (collocations, register, faux amis) — pre-generated in the background.
-- 🃏 **Anki export**: suggested cloze / vocab / grammar cards, plus **audio cards**
-  clipped from the real clause → `.apkg` (with media) or `.tsv`.
+- 💡 **Explanations** of marked spans, in your chosen language (中文 by default),
+  calibrated to B2 (collocations, register, faux amis) — pre-generated in the
+  background so the review page is ready when you get there.
+- 🃏 **Anki export**: suggested cloze (with a translation hint) / vocab / grammar
+  cards, plus **audio cards** clipped from the real clause → `.apkg` (with media)
+  or `.tsv`.
+- 🔁 **Spaced-repetition review, in context**: review accepted cards inside the app
+  with the **clause audio as the prompt** and a one-tap jump back to the source
+  video — simple SM-2-lite scheduling. (Anki export stays for mobile/sync.)
+- ⏯️ **Resume**: remembers your last position per video and picks up where you left.
 
 ## How it works
 
@@ -104,18 +110,23 @@ For an app-like window: `chrome --app=http://localhost:7777`.
 4. **Review & cards**: explanations + suggested Anki cards are already there; play
    each clause, read its translation, curate cards (accept/reject), then **export**
    `.apkg` (with audio) or `.tsv` and import into Anki.
+5. **Revise**: the *revise* button (top bar) runs spaced-repetition over your
+   accepted cards — hear the clause, recall, grade *Again/Good/Easy*, and jump to
+   the source video to see the word in context. (Reopen any video and it resumes
+   where you left off.)
 
 ## Configuration
 
 `config.toml` (gitignored — see `config.toml.example`): learner profile (known and
-target languages + levels), model IDs (`model`, `translate_model`), data directory,
-and port. The API key is read from the environment variable named by `api_key_env`
+target languages + levels), model IDs (`model`, `translate_model`), the explanation
+language (`explain_lang`, default `zh`), data directory, and port. The API key is
+read from the environment variable named by `api_key_env`
 (default `ANTHROPIC_API_KEY`) — keep it in `.env`, never in the committed config.
 
 ## Project layout
 
 ```
-echo/        FastAPI backend (app, db, fetcher, json3, pipeline, render, phon, study, export)
+echo/        FastAPI backend (app, db, fetcher, json3, pipeline, render, phon, study, srs, export)
 echo/data/   vendored Lexique pronunciation data
 web/         Vite + React SPA (built into web/dist, served by the backend)
 tests/       offline tests + the canonical fixture

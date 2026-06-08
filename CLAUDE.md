@@ -2,7 +2,7 @@
 
 Orientation for AI agents (and humans) contributing to this repo. The **product
 design** lives in `plan/workflow.md` (source of truth) and `plan/initial.md`
-(original vision); the per-slice build history is `plan/slice-1..5.md`. This file
+(original vision); the per-slice build history is `plan/slice-1..6.md`. This file
 is the *engineering* map: invariants, layout, how to run/test, and gotchas.
 
 ## What this is
@@ -34,7 +34,12 @@ LLM features use the user's own Anthropic API key.
    Review page.
 6. **LLM tiering by value.** Rectify + explain use the strong model
    (`config.llm_model`); bulk clause translation uses a cheap one
-   (`config.llm_translate_model`).
+   (`config.llm_translate_model`). Explanation language is fixed by
+   `config.explain_lang` (default `zh`), not model-routed.
+7. **Review in context.** Accepted cards are reviewed in-app (SM-2-lite, `srs.py`)
+   with the clause audio as the prompt and a one-tap jump back to the source
+   video — this is the payoff of keeping everything attached to timing. Playback
+   position is also remembered per video (`videos.last_pos_ms`) and resumed.
 
 ## Run / test / build
 - Backend (serves built SPA + API on :7777): `uv run python -m echo`
@@ -51,13 +56,14 @@ Backend `echo/`:
 | `app.py` | FastAPI routes — the only web layer |
 | `config.py` | load `config.toml` + `.env`; resolved settings |
 | `db.py` | SQLite (stdlib, **no ORM**); schema init + all queries |
-| `schema.sql` | DDL: videos, words, edits, segments, marks, translations, explanations, cards, lexemes |
+| `schema.sql` | DDL: videos (+`last_pos_ms`), words, edits, segments, marks, translations, explanations, cards (+SRS cols), lexemes |
 | `fetcher.py` | the **only** yt-dlp boundary (bestaudio→opus, json3 captions) |
 | `json3.py` | parse json3 → flat timed `words` |
 | `pipeline.py` | LLM rectify+segment (structured output; validate; retry once) |
 | `render.py` | `words ⊕ edits ⊕ segments → timed tokens` (the invariant) |
 | `phon.py` | IPA: vendored Lexique + espeak fallback |
 | `study.py` | translate (Haiku) + explain & suggest cards (Sonnet) |
+| `srs.py` | SM-2-lite spaced-repetition scheduler (pure) |
 | `export.py` | Anki `.apkg` (genanki) + TSV; audio cards from 🔊 marks |
 | `seed.py` | offline fixture loader |
 | `__main__.py` | uvicorn entrypoint |
@@ -65,10 +71,11 @@ Backend `echo/`:
 Frontend `web/src/`:
 | file | responsibility |
 |---|---|
-| `App.jsx` | view switch Library / Player / Review by state (no router) |
+| `App.jsx` | view switch Library / Player / Review / Revise by state (no router) |
 | `Library.jsx` | list + add video |
-| `Player.jsx` | shadow: karaoke, click→IPA+mark, select→mark, clause loop, step, speed, hide, per-clause translate |
-| `Review.jsx` | batch explanations + cards, curate, export |
+| `Player.jsx` | shadow: karaoke, click→IPA+mark, select→mark, clause loop, step, speed, hide, per-clause translate, resume position |
+| `Review.jsx` | per-video: batch explanations + cards, curate, export |
+| `Revise.jsx` | spaced-repetition review queue (clause audio prompt + open-in-player) |
 | `api.js` | fetch wrappers |
 | `styles.css` | all styles (no framework) |
 
@@ -84,11 +91,14 @@ Frontend `web/src/`:
 
 ## LLM specifics & gotchas
 - Models from config: `llm_model` (rectify + explain; currently
-  `claude-sonnet-4-6`), `llm_translate_model` (`claude-haiku-4-5`).
+  `claude-sonnet-4-6`), `llm_translate_model` (`claude-haiku-4-5`). Explanation
+  output language is fixed by `explain_lang` (default `zh`).
 - **Structured output (`output_config` json_schema) only for extraction
   (rectify).** For *generation* (explain) it made the model **satisfice**
   (degenerate output, empty cards), so `study.explain_and_suggest` uses free-form
-  generation + loose JSON parse (`_loads_loose`) + one retry. **Do not** switch it
+  generation + loose JSON parse (`_loads_loose`, `json.loads(strict=False)`) +
+  retries. The model also tends to emit invalid JSON (ASCII `"`/newlines inside
+  CJK values), so the prompt mandates 「」 quotes and `<br>`. **Do not** switch it
   back to a strict schema.
 - **Pipeline thinking is disabled** (`thinking:{type:"disabled"}`, `max_tokens=48000`):
   adaptive thinking blew the token cap on long transcripts.
@@ -114,8 +124,8 @@ var via `api_key_env`. Commit `config.toml.example`, **never** a key.
   (port stays bound). For scripted boot/kill use `.venv/bin/uvicorn …` directly;
   free a stuck port with `fuser -k 7777/tcp`.
 - Data dir `~/echo-data` (`audio/` + `app.db`). New *tables* appear via `init_db`
-  (CREATE IF NOT EXISTS); a new *column* needs a migration (see the `marks.note`
-  ALTER in `db.init_db`).
+  (CREATE IF NOT EXISTS); a new *column* needs a migration — add it to the
+  `_ensure_columns(...)` calls in `db.init_db` (idempotent ALTERs).
 
 ## Don'ts
 Don't mutate `words` after fetch · don't have the LLM emit prose · don't refetch a
